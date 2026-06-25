@@ -3,3 +3,4 @@ dist-demo
 test-results
 playwright-report
 .DS_Store
+node_modules
