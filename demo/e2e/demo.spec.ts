@@ -47,6 +47,20 @@ test.describe('首页 JS vs Link', () => {
     await expect(page).toHaveURL('/')
   })
 
+  test('Scale 放大', async ({ page }) => {
+    await page.getByTestId('push-scale').click()
+    await expect(page).toHaveURL('/push/scale')
+    await expect(page.getByTestId('scale-page-transition')).toContainText('scale')
+    await page.getByTestId('back').click()
+    await expect(page).toHaveURL('/')
+
+    await page.getByTestId('link-scale').click()
+    await expect(page).toHaveURL('/wrap/scale')
+    await expect(page.getByTestId('scale-page-transition')).toContainText('scale')
+    await page.getByTestId('back').click()
+    await expect(page).toHaveURL('/')
+  })
+
   test('Fade 淡入淡出', async ({ page }) => {
     await page.getByTestId('push-fade').click()
     await expect(page).toHaveURL('/push/fade')

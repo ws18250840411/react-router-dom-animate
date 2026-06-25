@@ -98,6 +98,8 @@ describe('planTransition', () => {
       'cover',
     )
     expect(classNames.exitActive).toBe('slide-prev-leave-slide')
+    expect(classNames.exit).toContain('fr-enter-below')
+    expect(classNames.enterActive).toBe('slide-next-enter')
   })
 
   it('POP 从 state 读离场动画类型', () => {
@@ -129,7 +131,8 @@ describe('planTransition', () => {
       'cover',
     )
     expect(classNames.exitActive).toBe('slide-up-leave')
-    expect(classNames.enterActive).toBe('modal-bg-enter')
+    expect(classNames.enterActive).toBe('')
+    expect(classNames.enter).toContain('fr-enter-below')
   })
 
   it('scale PUSH 仅 enter', () => {

@@ -22,6 +22,7 @@ const EXPLICIT_SCENARIOS: Scenario[] = [
   { key: 'cover', label: 'Cover', transition: 'cover', pushTo: '/push/cover', wrapTo: '/wrap/cover' },
   { key: 'slide', label: 'Slide', transition: 'slide', pushTo: '/push/slide', wrapTo: '/wrap/slide' },
   { key: 'fade', label: 'Fade', transition: 'fade', pushTo: '/push/fade', wrapTo: '/wrap/fade' },
+  { key: 'scale', label: 'Scale', transition: 'scale', pushTo: '/push/scale', wrapTo: '/wrap/scale' },
   { key: 'modal', label: 'Modal', transition: 'modal', pushTo: '/push/modal', wrapTo: '/wrap/modal' },
   { key: 'tabs', label: 'Tabs', transition: 'fade', pushTo: '/push/tabs/a', wrapTo: '/wrap/tabs/a' },
 ]

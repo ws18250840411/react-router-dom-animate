@@ -69,7 +69,8 @@ const COVER_BACK: ClassNames = {
 const SLIDE_FORWARD: ClassNames = {
   enter: BASE,
   enterActive: 'slide-next-enter',
-  exit: BASE,
+  /** 旧页压到下层，新页 slide-next-enter 在上层滑入（仅用通用 z-index 类） */
+  exit: `${BASE} fr-enter-below`,
   exitActive: 'slide-prev-leave-slide',
 }
 
@@ -127,8 +128,9 @@ export const MODAL_PUSH: ClassNames = {
 }
 
 export const MODAL_POP: ClassNames = {
-  enter: BASE,
-  enterActive: 'modal-bg-enter',
+  /** 底层页不做缩放入场，等 modal 退场后再露出 */
+  enter: `${BASE} fr-enter-below`,
+  enterActive: '',
   exit: `${BASE} fr-modal`,
   exitActive: 'slide-up-leave',
 }

@@ -36,6 +36,7 @@ export const routes: RouteObject[] = [
           { path: 'detail', element: <AnimPage title="Detail" testId="detail-page" /> },
           { path: 'slide', element: <AnimPage title="Slide" testId="slide-page" /> },
           { path: 'fade', element: <AnimPage title="Fade" testId="fade-page" /> },
+          { path: 'scale', element: <AnimPage title="Scale" testId="scale-page" /> },
           { path: 'modal', element: <ModalPay /> },
           { path: 'tabs', handle: { transition: 'fade' }, element: <TabsLayout basePath="/push/tabs" />, children: tabChildren },
           { path: 'step-b', element: <StepB /> },
@@ -72,6 +73,15 @@ export const routes: RouteObject[] = [
             element: (
               <AnimatedOutlet transition="fade">
                 <AnimPage title="Fade" testId="fade-page" transitionOverride="fade" />
+              </AnimatedOutlet>
+            ),
+          },
+          {
+            path: 'scale',
+            handle: { transition: 'scale' },
+            element: (
+              <AnimatedOutlet transition="scale">
+                <AnimPage title="Scale" testId="scale-page" transitionOverride="scale" />
               </AnimatedOutlet>
             ),
           },

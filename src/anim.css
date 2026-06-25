@@ -7,6 +7,13 @@
   isolation: isolate;
 }
 
+:root {
+  --fr-duration: 300ms;
+  --fr-ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --fr-ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --fr-modal-overlay: rgba(15, 23, 42, 0.55);
+}
+
 .animated-outlet-page {
   grid-column: 1;
   grid-row: 1;
@@ -37,8 +44,6 @@
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
   pointer-events: none;
-  contain: layout style paint;
-  transform: translate3d(0, 0, 0);
 }
 
 .animated-outlet-page.fr-enter-below {
@@ -46,27 +51,19 @@
 }
 
 .animated-outlet-page.fr-anim {
-  -webkit-animation-duration: var(--fr-duration, 300ms);
-  animation-duration: var(--fr-duration, 300ms);
-  -webkit-animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.animated-outlet-page.slide-next-enter,
-.animated-outlet-page.slide-next-leave,
-.animated-outlet-page.slide-prev-leave-slide,
-.animated-outlet-page.slide-prev-enter-slide {
-  -webkit-animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  -webkit-animation-duration: var(--fr-duration);
+  animation-duration: var(--fr-duration);
+  -webkit-animation-timing-function: var(--fr-ease);
+  animation-timing-function: var(--fr-ease);
 }
 
 .animated-outlet-page.fr-modal.fr-anim,
 .animated-outlet-page.modal-bg-leave,
-.animated-outlet-page.modal-bg-enter {
-  -webkit-animation-duration: var(--fr-duration, 300ms);
-  animation-duration: var(--fr-duration, 300ms);
-  -webkit-animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+.animated-outlet-page.modal-bg-enter,
+.animated-outlet-page.slide-up-enter,
+.animated-outlet-page.slide-up-leave {
+  -webkit-animation-timing-function: var(--fr-ease-spring);
+  animation-timing-function: var(--fr-ease-spring);
 }
 
 .animated-outlet-page.none-enter {
@@ -196,8 +193,8 @@
     transform: translate3d(0, 0, 0);
   }
   to {
-    -webkit-transform: translate3d(-20%, 0, 0);
-    transform: translate3d(-20%, 0, 0);
+    -webkit-transform: translate3d(-33%, 0, 0);
+    transform: translate3d(-33%, 0, 0);
   }
 }
 
@@ -206,7 +203,7 @@
     transform: translate3d(0, 0, 0);
   }
   to {
-    transform: translate3d(-20%, 0, 0);
+    transform: translate3d(-33%, 0, 0);
   }
 }
 
@@ -217,8 +214,8 @@
 
 @-webkit-keyframes fr-slide-prev-enter-slide {
   from {
-    -webkit-transform: translate3d(-20%, 0, 0);
-    transform: translate3d(-20%, 0, 0);
+    -webkit-transform: translate3d(-33%, 0, 0);
+    transform: translate3d(-33%, 0, 0);
   }
   to {
     -webkit-transform: translate3d(0, 0, 0);
@@ -228,7 +225,7 @@
 
 @keyframes fr-slide-prev-enter-slide {
   from {
-    transform: translate3d(-20%, 0, 0);
+    transform: translate3d(-33%, 0, 0);
   }
   to {
     transform: translate3d(0, 0, 0);
@@ -341,7 +338,15 @@
 
 .animated-outlet-page.fr-modal {
   z-index: 20;
+}
+
+.animated-outlet-page.fr-modal:not(.fr-animating) {
   background-color: transparent;
+}
+
+/* modal POP：退场期间壳层铺遮罩，与 slide-up-leave 同步下移 */
+.animated-outlet-page.fr-modal.fr-animating.slide-up-leave {
+  background-color: var(--fr-modal-overlay, rgba(15, 23, 42, 0.55));
 }
 
 .animated-outlet-page.slide-up-enter {

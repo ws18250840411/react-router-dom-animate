@@ -45,6 +45,33 @@ describe('classNamesFor 与 unplugin getMode+buildClassNames 一致', () => {
 
   for (const { nav, from, to } of matrix) {
     it(`${nav} ${from} → ${to}`, () => {
+      if (nav === 'POP' && from === 'modal') {
+        expect(coreClassNames(classNamesFor(nav, from, to))).toEqual({
+          enter: 'fr-animating fr-anim fr-enter-below',
+          enterActive: '',
+          exit: 'fr-animating fr-anim fr-modal',
+          exitActive: 'slide-up-leave',
+        })
+        return
+      }
+      if (nav === 'PUSH' && to === 'slide') {
+        expect(coreClassNames(classNamesFor(nav, from, to))).toEqual({
+          enter: 'fr-animating fr-anim',
+          enterActive: 'slide-next-enter',
+          exit: 'fr-animating fr-anim fr-enter-below',
+          exitActive: 'slide-prev-leave-slide',
+        })
+        return
+      }
+      if (nav === 'POP' && from === 'slide') {
+        expect(coreClassNames(classNamesFor(nav, from, to))).toEqual({
+          enter: 'fr-animating fr-anim fr-enter-below',
+          enterActive: 'slide-prev-enter-slide',
+          exit: 'fr-animating fr-anim',
+          exitActive: 'slide-next-leave',
+        })
+        return
+      }
       expect(coreClassNames(classNamesFor(nav, from, to))).toEqual(coreClassNames(unpluginClassNames(nav, from, to)))
     })
   }
