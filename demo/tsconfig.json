@@ -8,7 +8,10 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "paths": {
+      "react-router-dom-animate": ["../dist/index.d.ts"]
+    }
   },
   "include": ["src"]
 }

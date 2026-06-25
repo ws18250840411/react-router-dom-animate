@@ -11,8 +11,7 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    },
-    "./anim.css": "./dist/anim.css"
+    }
   },
   "sideEffects": [
     "**/*.css",
@@ -24,7 +23,9 @@
   ],
   "scripts": {
     "build": "tsup",
-    "demo": "npm run dev --prefix demo",
+    "prepublishOnly": "npm run build",
+    "demo": "npm run build && npm run dev --prefix demo",
+    "demo:src": "npm run dev:src --prefix demo",
     "demo:build": "npm run build --prefix demo",
     "e2e": "npm run e2e --prefix demo",
     "test": "vitest run",

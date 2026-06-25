@@ -4,7 +4,7 @@
 
 ## 特性
 
-- 内置 CSS，引入 `AnimatedOutlet` 即自动生效
+- 内置 CSS，`import { AnimatedOutlet }` 时随 JS 自动注入
 - 支持嵌套 `AnimatedOutlet`，不同区域可用不同动画
 - 两种等效的配置方式，按习惯任选
 - 可通过 `registerAnimPreset` 扩展自定义预设
@@ -170,7 +170,8 @@ export function TabsLayout() {
 ## 本地 Demo
 
 ```bash
-npm run demo    # http://localhost:5180
+npm run demo       # 先 build 库，再用 dist 产物跑 Demo
+npm run demo:src   # 直接联调 src 源码（Vite 会单独加载 anim.css）
 ```
 
 Demo 中 `/push/*` 演示方式一（跳转带 `state`），`/wrap/*` 演示方式二（路由包 `AnimatedOutlet`），效果一一对应。

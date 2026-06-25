@@ -1,4 +1,3 @@
-import './anim.css'
 import {
   cloneElement,
   createContext,
