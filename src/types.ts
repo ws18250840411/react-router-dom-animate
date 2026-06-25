@@ -15,7 +15,6 @@ export interface ClassNames {
   exitDone?: string
 }
 
-/** 某一时刻路由的完整快照（含 state，POP 时从离场页 state 读动画类型） */
 export interface RouteSnapshot {
   path: string
   key: string
@@ -23,7 +22,6 @@ export interface RouteSnapshot {
   matches: UIMatch[]
 }
 
-/** 一次导航的动画计划：Outlet 只负责把 classNames 交给 CSSTransition */
 export interface TransitionPlan {
   classNames: ClassNames
   duration: number

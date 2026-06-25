@@ -1,19 +1,19 @@
-import { NavLink } from 'react-router-dom'
-import { AnimatedOutlet, useAnimatedNavigate } from 'react-router-dom-animate'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { AnimatedOutlet } from 'react-router-dom-animate'
 
 type TabsLayoutProps = {
   basePath: '/push/tabs' | '/wrap/tabs'
 }
 
-/** push / wrap 共用：内层 AnimatedOutlet fade，顶部 back 一致 */
+/** 内层 AnimatedOutlet 负责 Tab 切换 fade */
 export function TabsLayout({ basePath }: TabsLayoutProps) {
-  const navigate = useAnimatedNavigate()
+  const navigate = useNavigate()
   const mode = basePath.startsWith('/push') ? 'push' : 'wrap'
 
   return (
     <div className="app-shell">
       <header className="subbar">
-        <button type="button" className="tab secondary" data-testid="back-tabs" onClick={() => navigate.back()}>
+        <button type="button" className="tab secondary" data-testid="back-tabs" onClick={() => navigate(-1)}>
           ← 返回
         </button>
         <span>{mode} / tabs · fade</span>

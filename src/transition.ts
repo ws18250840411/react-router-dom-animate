@@ -10,11 +10,13 @@ import type {
   TransitionPlan,
 } from './types'
 
-// ─── 动画时长（读 CSS 变量 --fr-duration，与 unplugin readDuration 一致）────────
+const STATE_KEY = 'transition'
+const DEFAULT_ANIM: RouteAnimType = 'cover'
+const BASE = 'fr-animating fr-anim'
 
 let durationMs = 300
 
-export function readDurationMs(): number {
+function readDurationMs(): number {
   if (typeof document === 'undefined') return durationMs
   const raw = getComputedStyle(document.documentElement).getPropertyValue('--fr-duration').trim()
   if (!raw) return durationMs
@@ -23,9 +25,6 @@ export function readDurationMs(): number {
   return durationMs
 }
 
-// ─── 预设注册表 ───────────────────────────────────────────────────────────────
-
-const BASE = 'fr-animating fr-anim'
 const presets = new Map<RouteAnimType, AnimPreset>()
 
 export const animPresetRegistry: AnimPresetRegistry = {
@@ -47,7 +46,7 @@ export function registerAnimPreset(preset: AnimPreset): void {
   animPresetRegistry.register(preset)
 }
 
-export function parseRouteAnim(value: unknown): RouteAnimType | undefined {
+function parseRouteAnim(value: unknown): RouteAnimType | undefined {
   if (typeof value !== 'string' || !animPresetRegistry.has(value)) return undefined
   return value
 }
@@ -69,7 +68,6 @@ const COVER_BACK: ClassNames = {
 const SLIDE_FORWARD: ClassNames = {
   enter: BASE,
   enterActive: 'slide-next-enter',
-  /** 旧页压到下层，新页 slide-next-enter 在上层滑入（仅用通用 z-index 类） */
   exit: `${BASE} fr-enter-below`,
   exitActive: 'slide-prev-leave-slide',
 }
@@ -116,7 +114,7 @@ const NONE: ClassNames = {
   exitActive: '',
 }
 
-export const MODAL_PUSH: ClassNames = {
+const MODAL_PUSH: ClassNames = {
   appear: `${BASE} fr-modal`,
   appearActive: 'slide-up-enter',
   appearDone: 'fr-modal',
@@ -127,8 +125,7 @@ export const MODAL_PUSH: ClassNames = {
   exitActive: 'modal-bg-leave',
 }
 
-export const MODAL_POP: ClassNames = {
-  /** 底层页不做缩放入场，等 modal 退场后再露出 */
+const MODAL_POP: ClassNames = {
   enter: `${BASE} fr-enter-below`,
   enterActive: '',
   exit: `${BASE} fr-modal`,
@@ -146,13 +143,10 @@ for (const preset of [
   registerAnimPreset(preset)
 }
 
-export const DEFAULT_ANIM: RouteAnimType = 'cover'
-
 function presetOf(type: RouteAnimType): AnimPreset {
   return animPresetRegistry.get(type) ?? animPresetRegistry.get(DEFAULT_ANIM)!
 }
 
-/** 导航方向 + 起止动画类型 → CSSTransition classNames（unplugin getMode + buildClassNames 等价） */
 export function classNamesFor(nav: NavType | string, fromType: RouteAnimType, toType: RouteAnimType): ClassNames {
   if (nav === 'REPLACE') {
     if (toType !== 'cover' && toType !== 'slide' && toType !== 'fade') return NONE
@@ -169,11 +163,9 @@ export function classNamesFor(nav: NavType | string, fromType: RouteAnimType, to
   return nav === 'POP' ? preset.back : preset.forward
 }
 
-export function isAnimated(classNames: ClassNames): boolean {
+function isAnimated(classNames: ClassNames): boolean {
   return Boolean(classNames.enterActive || classNames.exitActive)
 }
-
-// ─── 路由级动画声明（page / layout）──────────────────────────────────────────
 
 const pageAnims = new Map<string, RouteAnimType>()
 const layoutScopes = new Map<string, RouteAnimType>()
@@ -190,7 +182,7 @@ export function unregisterPageAnim(pathname: string): void {
   pageAnims.delete(normalizePath(pathname))
 }
 
-export function pageAnim(pathname: string): RouteAnimType | undefined {
+function pageAnim(pathname: string): RouteAnimType | undefined {
   return pageAnims.get(normalizePath(pathname))
 }
 
@@ -202,7 +194,7 @@ export function unregisterLayoutScope(routeId: string): void {
   layoutScopes.delete(routeId)
 }
 
-export function layoutScopeForMatches(matches: UIMatch[] | undefined): RouteAnimType | undefined {
+function layoutScopeForMatches(matches: UIMatch[] | undefined): RouteAnimType | undefined {
   if (!matches || matches.length < 2) return undefined
   return layoutScopes.get(matches[matches.length - 2]?.id ?? '')
 }
@@ -216,10 +208,6 @@ export function layoutRouteId(matches: UIMatch[], pathname: string): string | un
   if (leafActive && matches.length >= 3) return matches[matches.length - 2]?.id
   return matches[matches.length - 1]?.id
 }
-
-// ─── 转场计划（导航 → classNames + duration）──────────────────────────────────
-
-export const TRANSITION_STATE_KEY = 'transition'
 
 const IDLE: TransitionPlan = {
   classNames: { enter: '', enterActive: '', exit: '', exitActive: '' },
@@ -238,10 +226,9 @@ function fromHandle(matches: RouteSnapshot['matches']): RouteAnimType | undefine
 
 function fromState(state: unknown): RouteAnimType | undefined {
   if (!state || typeof state !== 'object') return undefined
-  return parseRouteAnim((state as Record<string, unknown>)[TRANSITION_STATE_KEY])
+  return parseRouteAnim((state as Record<string, unknown>)[STATE_KEY])
 }
 
-/** 从路由快照解析动画类型 */
 export function resolveAnim(snapshot: RouteSnapshot, fallback: RouteAnimType): RouteAnimType {
   return (
     fromState(snapshot.state) ??
@@ -252,7 +239,6 @@ export function resolveAnim(snapshot: RouteSnapshot, fallback: RouteAnimType): R
   )
 }
 
-/** 一次导航 → TransitionPlan（核心入口） */
 export function planTransition(
   nav: string,
   from: RouteSnapshot,

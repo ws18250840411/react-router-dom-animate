@@ -101,9 +101,4 @@ test.describe('首页 JS vs Link', () => {
     await page.getByTestId('tab-link-b').last().click()
     await expect(page.getByTestId('tab-b-page')).toBeVisible()
   })
-
-  test('连点入队 B→C', async ({ page }) => {
-    await page.getByTestId('queue-rapid-bc').click()
-    await expect(page).toHaveURL('/push/step-c', { timeout: 10_000 })
-  })
 })

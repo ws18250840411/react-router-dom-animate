@@ -1,7 +1,3 @@
-/**
- * AnimatedOutlet — 渲染层对齐 unplugin-react-router-dom/outlet-component.ts + RTG 官方模式。
- * @see docs/DESIGN.md
- */
 import './anim.css'
 import {
   cloneElement,
@@ -21,7 +17,6 @@ import {
   useLocation,
   useMatches,
   useNavigationType,
-  useNavigate,
   useOutlet,
   type Location,
   type UIMatch,
@@ -29,17 +24,13 @@ import {
 import { CSSTransition, TransitionGroup } from 'react-transition-group'
 
 import {
-  DEFAULT_ANIM,
   layoutRouteId,
   planTransition,
-  readDurationMs,
   registerLayoutScope,
   registerPageAnim,
   unregisterLayoutScope,
   unregisterPageAnim,
 } from './transition'
-import { executePendingNav } from './navigate'
-import { NavigateQueueContext, type PendingNav } from './navigate-queue'
 import type { ClassNames, RouteAnimType, RouteSnapshot, TransitionPlan } from './types'
 
 export interface AnimatedOutletProps {
@@ -68,7 +59,6 @@ function PageScope({ transition, children }: { transition: RouteAnimType; childr
   return children
 }
 
-/** unplugin FrozenPage：冻结 outlet 与 LocationContext，防止离场页内容被替换 */
 function FrozenOutlet({ outlet, locCtx }: { outlet: ReactNode; locCtx: unknown }) {
   const [frozen] = useState(outlet)
   const ctx = useRef(locCtx)
@@ -77,7 +67,6 @@ function FrozenOutlet({ outlet, locCtx }: { outlet: ReactNode; locCtx: unknown }
   )
 }
 
-/** 每页独立 nodeRef；须把 TransitionGroup 注入的 in/onExited 等转发给 CSSTransition */
 function PageTransition({
   outlet,
   locCtx,
@@ -126,13 +115,12 @@ function LayoutScopeRegistrar({ transition }: { transition: RouteAnimType }) {
 }
 
 function AnimatedRoot({ layoutTransition, className }: { layoutTransition?: RouteAnimType; className?: string }) {
-  const navigate = useNavigate()
   const matches = useMatches()
   const location = useLocation()
   const navType = useNavigationType()
   const outlet = useOutlet()
   const locCtx = useContext(UNSAFE_LocationContext)
-  const fallback = layoutTransition ?? DEFAULT_ANIM
+  const fallback = layoutTransition ?? 'cover'
   const locationRef = useRef(location)
   locationRef.current = location
   const [settledLocation, setSettledLocation] = useState(location)
@@ -173,38 +161,14 @@ function AnimatedRoot({ layoutTransition, className }: { layoutTransition?: Rout
   const timeout =
     activePlan.duration > 0 ? { enter: activePlan.duration, exit: activePlan.duration } : 0
 
-  const animBusyRef = useRef(false)
-  const animTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const pendingNavRef = useRef<PendingNav | null>(null)
   const settledKeyRef = useRef(settledLocation.key)
   settledKeyRef.current = settledLocation.key
 
-  const clearAnimBusy = useCallback(() => {
-    if (animTimerRef.current !== undefined) {
-      clearTimeout(animTimerRef.current)
-      animTimerRef.current = undefined
-    }
-    animBusyRef.current = false
-  }, [])
-
-  const flushPendingNav = useCallback(() => {
-    const item = pendingNavRef.current
-    pendingNavRef.current = null
-    if (!item) return
-    executePendingNav(navigate, item)
-  }, [navigate])
-
-  const flushPendingNavRef = useRef(flushPendingNav)
-  flushPendingNavRef.current = flushPendingNav
-
-  /** RTG onExited：离场结束后提交 settled（官方推荐清理/提交时机） */
   const commitSettled = useCallback(() => {
-    clearAnimBusy()
     if (settledKeyRef.current !== locationRef.current.key) {
       setSettledLocation(locationRef.current)
     }
-    flushPendingNavRef.current()
-  }, [clearAnimBusy])
+  }, [])
 
   useLayoutEffect(() => {
     if (settledLocation.key === location.key) return
@@ -216,36 +180,6 @@ function AnimatedRoot({ layoutTransition, className }: { layoutTransition?: Rout
     return () => window.clearTimeout(timer)
   }, [location.key, activePlan.duration, settledLocation.key, commitSettled])
 
-  const markAnimBusy = useCallback((durationMs: number) => {
-    animBusyRef.current = true
-    if (animTimerRef.current !== undefined) clearTimeout(animTimerRef.current)
-    if (durationMs <= 0) {
-      animBusyRef.current = false
-      return
-    }
-    animTimerRef.current = setTimeout(() => {
-      animBusyRef.current = false
-      animTimerRef.current = undefined
-      flushPendingNavRef.current()
-    }, durationMs + 50)
-  }, [])
-
-  const queueApi = useMemo(
-    () => ({
-      runOrEnqueue(item: PendingNav) {
-        if (!animBusyRef.current) {
-          const duration = readDurationMs()
-          markAnimBusy(duration)
-          executePendingNav(navigate, item)
-          return
-        }
-        pendingNavRef.current = item
-      },
-    }),
-    [navigate, markAnimBusy],
-  )
-
-  /** RTG childFactory：离场子节点也注入当前 classNames / timeout（不覆盖 nodeRef） */
   const childFactory = useCallback(
     (child: ReactElement) =>
       cloneElement(child, {
@@ -260,21 +194,19 @@ function AnimatedRoot({ layoutTransition, className }: { layoutTransition?: Rout
   )
 
   return (
-    <NavigateQueueContext.Provider value={queueApi}>
-      <TransitionGroup
-        className={className ? `animated-outlet-group ${className}` : 'animated-outlet-group'}
-        childFactory={childFactory}
-      >
-        <PageTransition
-          key={location.key}
-          outlet={outlet}
-          locCtx={locCtx}
-          classNames={activePlan.classNames}
-          timeout={timeout}
-          onExited={commitSettled}
-        />
-      </TransitionGroup>
-    </NavigateQueueContext.Provider>
+    <TransitionGroup
+      className={className ? `animated-outlet-group ${className}` : 'animated-outlet-group'}
+      childFactory={childFactory}
+    >
+      <PageTransition
+        key={location.key}
+        outlet={outlet}
+        locCtx={locCtx}
+        classNames={activePlan.classNames}
+        timeout={timeout}
+        onExited={commitSettled}
+      />
+    </TransitionGroup>
   )
 }
 

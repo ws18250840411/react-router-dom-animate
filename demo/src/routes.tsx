@@ -7,8 +7,6 @@ import { TabA } from './pages/TabA'
 import { TabB } from './pages/TabB'
 import { TabsLayout } from './pages/TabsLayout'
 import { AnimPage } from './pages/AnimPage'
-import { StepB } from './pages/StepB'
-import { StepC } from './pages/StepC'
 
 const tabChildren: RouteObject[] = [
   { index: true, element: <TabA /> },
@@ -21,14 +19,13 @@ export const routes: RouteObject[] = [
     element: (
       <div className="app-shell">
         <main className="app-main">
-          <AnimatedOutlet />
+          <AnimatedOutlet  />
         </main>
       </div>
     ),
     children: [
       { index: true, element: <Home /> },
 
-      /** 方法跳转：页面裸放，动画靠 push/replace 传 transition */
       {
         path: 'push',
         children: [
@@ -39,12 +36,9 @@ export const routes: RouteObject[] = [
           { path: 'scale', element: <AnimPage title="Scale" testId="scale-page" /> },
           { path: 'modal', element: <ModalPay /> },
           { path: 'tabs', handle: { transition: 'fade' }, element: <TabsLayout basePath="/push/tabs" />, children: tabChildren },
-          { path: 'step-b', element: <StepB /> },
-          { path: 'step-c', element: <StepC /> },
         ],
       },
 
-      /** 组件包裹：动画在 routes 里用 AnimatedOutlet / handle 声明 */
       {
         path: 'wrap',
         children: [
@@ -100,8 +94,6 @@ export const routes: RouteObject[] = [
             element: <TabsLayout basePath="/wrap/tabs" />,
             children: tabChildren,
           },
-          { path: 'step-b', element: <StepB /> },
-          { path: 'step-c', element: <StepC /> },
         ],
       },
     ],

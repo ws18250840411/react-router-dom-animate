@@ -9,6 +9,7 @@ import {
   RouterProvider,
   createMemoryRouter,
   useLocation,
+  useNavigate,
   type RouteObject,
 } from 'react-router-dom'
 
@@ -105,14 +106,12 @@ describe('raw TransitionGroup', () => {
   })
 })
 
-describe('useAnimatedNavigate integration', () => {
-  it('push 带 transition 写入 state', async () => {
-    const { useAnimatedNavigate } = await import('../navigate')
-
+describe('state.transition integration', () => {
+  it('navigate state 写入 transition', async () => {
     function NavButton() {
-      const navigate = useAnimatedNavigate()
+      const navigate = useNavigate()
       return (
-        <button type="button" onClick={() => navigate.push('/about', { transition: 'fade' })}>
+        <button type="button" onClick={() => navigate('/about', { state: { transition: 'fade' } })}>
           go
         </button>
       )
@@ -144,13 +143,11 @@ describe('useAnimatedNavigate integration', () => {
     })
   })
 
-  it('push 时转场期间注入动画 class', async () => {
-    const { useAnimatedNavigate } = await import('../navigate')
-
+  it('navigate 时转场期间注入动画 class', async () => {
     function NavButton() {
-      const navigate = useAnimatedNavigate()
+      const navigate = useNavigate()
       return (
-        <button type="button" onClick={() => navigate.push('/about')}>
+        <button type="button" onClick={() => navigate('/about')}>
           go
         </button>
       )
@@ -176,12 +173,10 @@ describe('useAnimatedNavigate integration', () => {
   })
 
   it('PUSH 到 modal 后 enterDone 保留 fr-modal', async () => {
-    const { useAnimatedNavigate } = await import('../navigate')
-
     function NavButton() {
-      const navigate = useAnimatedNavigate()
+      const navigate = useNavigate()
       return (
-        <button type="button" onClick={() => navigate.push('/modal')}>
+        <button type="button" onClick={() => navigate('/modal')}>
           go modal
         </button>
       )

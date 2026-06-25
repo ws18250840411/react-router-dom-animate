@@ -1,6 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
 import type { RouteAnimType } from 'react-router-dom-animate'
-import { useAnimatedNavigate } from 'react-router-dom-animate'
 
 type Scenario = {
   key: string
@@ -39,16 +38,15 @@ function MatrixHead() {
 }
 
 export function Home() {
-  const navigate = useAnimatedNavigate()
-  const rrNavigate = useNavigate()
+  const navigate = useNavigate()
 
   return (
     <div className="page" data-testid="home-page">
       <h1>Demo</h1>
       <p className="lede">
-        全局默认只需顶层 <code>AnimatedOutlet</code> + 原生 <code>useNavigate</code> / <code>Link</code>；
-        显式转场用 <strong>JS</strong> 传 <code>transition</code>（<code>/push</code>）或 <strong>Link</strong> 走{' '}
-        <code>/wrap</code> 路由声明。
+        只需顶层 <code>AnimatedOutlet</code> + 原生 <code>useNavigate</code> / <code>Link</code>。
+        显式转场在 JS 里写 <code>state: {'{ transition: "fade" }'}</code>（<code>/push</code>），
+        或在 <code>/wrap</code> 路由 <code>handle</code> 声明。
       </p>
 
       <section className="matrix-section" data-testid="matrix-default">
@@ -61,7 +59,7 @@ export function Home() {
             <button
               type="button"
               data-testid={`push-${DEFAULT_SCENARIO.key}`}
-              onClick={() => rrNavigate(DEFAULT_SCENARIO.pushTo)}
+              onClick={() => navigate(DEFAULT_SCENARIO.pushTo)}
             >
               Push
             </button>
@@ -83,7 +81,7 @@ export function Home() {
               <button
                 type="button"
                 data-testid={`push-${s.key}`}
-                onClick={() => navigate.push(s.pushTo, { transition: s.transition })}
+                onClick={() => navigate(s.pushTo, { state: { transition: s.transition } })}
               >
                 JS
               </button>
@@ -92,30 +90,10 @@ export function Home() {
               </Link>
             </div>
           ))}
-
-          <div className="matrix-row matrix-row--note">
-            <span className="matrix-label">连点入队</span>
-            <code className="matrix-type">cover</code>
-            <button
-              type="button"
-              data-testid="queue-rapid-bc"
-              onClick={() => {
-                navigate.push('/push/step-b')
-                navigate.push('/push/step-c')
-              }}
-            >
-              B→C
-            </button>
-            <span className="matrix-na" data-testid="wrap-queue-na" title="Link 不走 navigate 队列">
-              —
-            </span>
-          </div>
         </div>
       </section>
 
-      <p className="hint">
-        入队仅 <code>useAnimatedNavigate</code> 支持。Tabs 内层为 fade。
-      </p>
+      <p className="hint">Tabs 内层为 fade。</p>
     </div>
   )
 }
