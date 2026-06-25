@@ -1,0 +1,54 @@
+{
+  "name": "react-router-dom-animate",
+  "version": "0.1.0",
+  "description": "Stack-based route transitions for react-router-dom",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./anim.css": "./dist/anim.css"
+  },
+  "sideEffects": [
+    "**/*.css",
+    "dist/index.js",
+    "dist/index.cjs"
+  ],
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "demo": "npm run dev --prefix demo",
+    "demo:build": "npm run build --prefix demo",
+    "e2e": "npm run e2e --prefix demo",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0",
+    "react-router-dom": ">=7.0.0",
+    "react-transition-group": "^4.4.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/react-transition-group": "^4.4.12",
+    "@testing-library/react": "^16.3.2",
+    "jsdom": "^26.1.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.17.0",
+    "react-transition-group": "^4.4.5",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
+  },
+  "license": "MIT"
+}

@@ -1,37 +1,87 @@
 # react-router-dom-animate
 
-#### 介绍
-react-router-dom的路由动画库
+为 [react-router-dom](https://reactrouter.com/) 提供栈式页面转场动画的轻量库。基于 `react-transition-group`，实现参考 [unplugin-react-router-dom](https://github.com) 与同仓库 `anim.ts`。
 
-#### 软件架构
-软件架构说明
+> 每个核心机制的设计依据见 **[docs/DESIGN.md](./docs/DESIGN.md)**。
 
+## 特性
 
-#### 安装教程
+- **内置 CSS** — `import { AnimatedOutlet } from 'react-router-dom-animate'` 时样式自动注入，无需单独 import CSS
+- **可选独立 CSS** — 仅需样式文件时可 `import 'react-router-dom-animate/anim.css'`
+- **嵌套 Outlet** — 根级默认动画，子级 `transition` 覆盖
+- **编程式导航** — `navigate.push('/path', { transition: 'fade' })` via `history.state`
+- **POP 回退** — 从离场页 `history.state.transition` 读动画类型
+- **可扩展** — `registerAnimPreset({ type, forward, back })`
+- **转场队列** — 动画 busy 窗口内 defer navigate（Vue Router 守卫同类语义）
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+## 安装
 
-#### 使用说明
+```bash
+npm install react-router-dom-animate react-transition-group
+```
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+**Peer dependencies:** `react` ≥18、`react-dom` ≥18、`react-router-dom` ≥7
 
-#### 参与贡献
+## 快速开始
 
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
+```tsx
+import { AnimatedOutlet, useAnimatedNavigate } from 'react-router-dom-animate'
 
+const router = createBrowserRouter([
+  { element: <AnimatedOutlet />, children: [/* … */] },
+])
+```
 
-#### 特技
+```tsx
+<AnimatedOutlet transition="fade" />
+<AnimatedOutlet transition="modal">{children}</AnimatedOutlet>
 
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+const navigate = useAnimatedNavigate()
+navigate.push('/detail', { transition: 'slide' })
+```
+
+> 连点导航请用 `useAnimatedNavigate`；原生 `useNavigate` / `<Link>` 不走队列。
+
+## 内置动画
+
+| 类型 | PUSH | POP | 说明 |
+|------|------|-----|------|
+| `cover` | 右进左遮 | 左出右显 | 默认 |
+| `slide` | 右进左移 | 左进右出 | 底层页可见 |
+| `fade` | 交叉淡入淡出 | 交叉淡入淡出 | Tab |
+| `scale` | 放大进入 | 缩小退出 | |
+| `modal` | 底部滑入 | 向下滑出 | |
+| `none` | 无动画 | 无动画 | |
+
+逻辑与 unplugin `getMode` + `buildClassNames` 等价，见 `src/transition.ts`。
+
+## 动画解析优先级
+
+```
+state.transition  →  handle.transition  →  pageAnim  →  layoutScope  →  fallback
+```
+
+## 源码结构
+
+```
+src/
+  transition.ts   预设 + classNamesFor + planTransition（unplugin anim 等价）
+  outlet.tsx      TransitionGroup 渲染（unplugin outlet 等价 + location.key）
+  navigate.ts     history.state 编程式导航
+  navigate-queue.ts  转场 busy 窗口 defer
+  anim.css          样式（与 unplugin ANIM_CSS 同构）
+docs/
+  DESIGN.md         每项实现的业界依据
+```
+
+## 开发与验证
+
+```bash
+npm run build          # 构建库
+npm test               # 库单元测试
+cd demo && npm install # 首次需安装 demo 依赖
+npm run demo           # http://localhost:5180
+npm run e2e            # demo 目录 Playwright 回归
+```
+
+MIT

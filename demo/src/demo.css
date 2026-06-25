@@ -1,0 +1,229 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-main {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.page {
+  height: 100%;
+  overflow: auto;
+  padding: 20px;
+}
+
+.page h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+
+.lede {
+  margin: 0 0 20px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.demo-block {
+  margin-bottom: 20px;
+}
+
+.demo-block h2 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pair-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #1e293b;
+}
+
+.pair-label {
+  font-size: 14px;
+  color: #e2e8f0;
+  min-width: 88px;
+}
+
+.matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 0;
+}
+
+.matrix-section {
+  margin-bottom: 20px;
+}
+
+.matrix-section-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+
+.matrix-head,
+.matrix-row {
+  display: grid;
+  grid-template-columns: 72px 64px 1fr 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid #1e293b;
+}
+
+.matrix-head {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.matrix-label {
+  font-size: 14px;
+}
+
+.matrix-type {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #1e293b;
+  color: #94a3b8;
+}
+
+.matrix-na {
+  text-align: center;
+  color: #475569;
+  font-size: 18px;
+}
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.hint code {
+  font-size: 11px;
+  background: #1e293b;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button,
+.tab {
+  appearance: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  background: #3b82f6;
+  color: #fff;
+}
+
+button.secondary,
+.tab.secondary {
+  background: #334155;
+}
+
+button.back {
+  background: #475569;
+  margin-bottom: 12px;
+}
+
+.subbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #334155;
+  background: #111827;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #334155;
+  background: #111827;
+}
+
+.tab {
+  display: inline-block;
+  flex: 1;
+  text-align: center;
+  text-decoration: none;
+  color: #fff;
+  background: #1f2937;
+}
+
+.tab.active {
+  background: #2563eb;
+}
+
+.modal-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100%;
+}
+
+.modal-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  pointer-events: none;
+}
+
+.modal-sheet {
+  position: relative;
+  z-index: 1;
+  margin-top: auto;
+  min-height: 55%;
+  border-radius: 16px 16px 0 0;
+  background: #1e293b;
+}
