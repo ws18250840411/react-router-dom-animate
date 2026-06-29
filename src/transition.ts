@@ -236,7 +236,12 @@ export function layoutRouteId(matches: UIMatch[], pathname: string): string | un
 export function sameLayoutPage(from: RouteSnapshot, to: RouteSnapshot): boolean {
   const fromId = layoutRouteId(from.matches as UIMatch[], from.path)
   const toId = layoutRouteId(to.matches as UIMatch[], to.path)
-  return fromId !== undefined && fromId === toId
+  if (fromId === undefined || fromId !== toId) return false
+  const depth = (path: string) => {
+    const n = normalizePath(path)
+    return n === '/' ? 0 : n.split('/').filter(Boolean).length
+  }
+  return depth(from.path) === depth(to.path)
 }
 
 const IDLE: TransitionPlan = {

@@ -180,7 +180,7 @@ function AnimatedRoot({
       : snap(settledLocation, matches)
 
   const activePlan: TransitionPlan = useMemo(() => {
-    if (depth === 0 && sameLayoutPage(fromSnap, toSnap)) {
+    if (!tabs && sameLayoutPage(fromSnap, toSnap)) {
       return { classNames: { enter: '', enterActive: '', exit: '', exitActive: '' }, duration: 0 }
     }
     const effectiveNav =

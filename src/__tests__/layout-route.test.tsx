@@ -75,6 +75,32 @@ describe('layoutRouteId', () => {
     expect(sameLayoutPage(from, to)).toBe(true)
   })
 
+  it('列表进详情不算 sameLayoutPage（同 layout 但路径加深）', () => {
+    const layoutId = 'layout-catalog'
+    const from = {
+      path: '/catalog',
+      key: 'k1',
+      state: null,
+      matches: [
+        { id: 'root', pathname: '/' },
+        { id: layoutId, pathname: '/catalog' },
+        { id: 'list', pathname: '/catalog' },
+      ],
+    }
+    const to = {
+      path: '/catalog/1',
+      key: 'k2',
+      state: null,
+      matches: [
+        { id: 'root', pathname: '/' },
+        { id: layoutId, pathname: '/catalog' },
+        { id: 'detail', pathname: '1' },
+      ],
+    }
+
+    expect(sameLayoutPage(from, to)).toBe(false)
+  })
+
   it('Tab A→B 时根层 nav 不参与 slide', async () => {
     const router = createMemoryRouter(routes, { initialEntries: ['/tabs/a'] })
     render(<RouterProvider router={router} />)
@@ -88,5 +114,62 @@ describe('layoutRouteId', () => {
       expect(rootPage?.className.includes('slide-next-enter')).toBeFalsy()
       expect(rootPage?.className.includes('tabs-slide')).toBeFalsy()
     })
+  })
+
+  it('中间层 Auth Outlet 在 Tab 切换时不播 cover', async () => {
+    function AuthLayout() {
+      return <AnimatedOutlet />
+    }
+
+    function TabsLayout() {
+      return (
+        <div data-testid="tabs-shell">
+          <main>
+            <AnimatedOutlet tabs transition="fade" />
+          </main>
+          <nav data-testid="tab-nav">
+            <Link to="/home" replace>
+              Home
+            </Link>
+            <Link to="/profile" replace>
+              Profile
+            </Link>
+          </nav>
+        </div>
+      )
+    }
+
+    const nested: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          {
+            element: <AuthLayout />,
+            children: [
+              {
+                element: <TabsLayout />,
+                children: [
+                  { path: '/home', element: <Page id="home-page" /> },
+                  { path: '/profile', element: <Page id="profile-page" /> },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(nested, { initialEntries: ['/home'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('home-page')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('link', { name: 'Profile' }))
+    await waitFor(() => expect(screen.getByTestId('profile-page')).toBeTruthy())
+
+    const shell = document.querySelector('[data-testid="tabs-shell"]')
+    const shellPage = shell?.closest('.animated-outlet-page')
+    expect(shellPage?.className.includes('slide-next-enter')).toBeFalsy()
+    expect(shellPage?.className.includes('slide-prev-enter-cover')).toBeFalsy()
+    expect(shellPage?.className.includes('slide-prev-leave-cover')).toBeFalsy()
   })
 })
