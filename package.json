@@ -1,6 +1,6 @@
 {
   "name": "react-router-dom-animate",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Stack-based route transitions for react-router-dom",
   "type": "module",
   "main": "./dist/index.cjs",

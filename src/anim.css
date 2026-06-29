@@ -212,6 +212,111 @@
   animation-name: fr-slide-prev-enter-slide;
 }
 
+/* Tab pager：左右对称平移，无 stack 视差 */
+.animated-outlet-page.tabs-slide-enter-forward {
+  z-index: 2;
+  -webkit-animation-name: fr-tabs-slide-enter-forward;
+  animation-name: fr-tabs-slide-enter-forward;
+}
+
+.animated-outlet-page.tabs-slide-leave-forward {
+  z-index: 1;
+  -webkit-animation-name: fr-tabs-slide-leave-forward;
+  animation-name: fr-tabs-slide-leave-forward;
+}
+
+.animated-outlet-page.tabs-slide-enter-back {
+  z-index: 2;
+  -webkit-animation-name: fr-tabs-slide-enter-back;
+  animation-name: fr-tabs-slide-enter-back;
+}
+
+.animated-outlet-page.tabs-slide-leave-back {
+  z-index: 1;
+  -webkit-animation-name: fr-tabs-slide-leave-back;
+  animation-name: fr-tabs-slide-leave-back;
+}
+
+@-webkit-keyframes fr-tabs-slide-enter-forward {
+  from {
+    -webkit-transform: translate3d(100%, 0, 0);
+    transform: translate3d(100%, 0, 0);
+  }
+  to {
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes fr-tabs-slide-enter-forward {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@-webkit-keyframes fr-tabs-slide-leave-forward {
+  from {
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    -webkit-transform: translate3d(-100%, 0, 0);
+    transform: translate3d(-100%, 0, 0);
+  }
+}
+
+@keyframes fr-tabs-slide-leave-forward {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-100%, 0, 0);
+  }
+}
+
+@-webkit-keyframes fr-tabs-slide-enter-back {
+  from {
+    -webkit-transform: translate3d(-100%, 0, 0);
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes fr-tabs-slide-enter-back {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@-webkit-keyframes fr-tabs-slide-leave-back {
+  from {
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    -webkit-transform: translate3d(100%, 0, 0);
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
+@keyframes fr-tabs-slide-leave-back {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
 @-webkit-keyframes fr-slide-prev-enter-slide {
   from {
     -webkit-transform: translate3d(-33%, 0, 0);

@@ -11,7 +11,6 @@ import {
   type ReactNode,
 } from 'react'
 import {
-  Outlet,
   UNSAFE_LocationContext,
   useLocation,
   useMatches,
@@ -27,18 +26,37 @@ import {
   planTransition,
   registerLayoutScope,
   registerPageAnim,
+  resolveOutletMode,
+  resolveTabs,
+  sameLayoutPage,
   unregisterLayoutScope,
   unregisterPageAnim,
 } from './transition'
-import type { ClassNames, RouteAnimType, RouteSnapshot, TransitionPlan } from './types'
+import type { ClassNames, OutletMode, RouteAnimType, RouteSnapshot, TransitionPlan } from './types'
 
 export interface AnimatedOutletProps {
   transition?: RouteAnimType
+  /** Tab 菜单：平级切换 + 同 Tab 静默；slide 时按 tabIndex 双向滑动 */
+  tabs?: boolean
+  /** stack（默认）栈式 push/pop；switch 非 Tab 的平级切换 */
+  mode?: OutletMode
   className?: string
   children?: ReactNode
 }
 
 const DepthContext = createContext(0)
+
+function pageTransitionKey(
+  mode: OutletMode,
+  depth: number,
+  matches: UIMatch[],
+  pathname: string,
+  locationKey: string,
+): string {
+  if (mode === 'switch') return pathname
+  if (depth > 0) return locationKey
+  return layoutRouteId(matches, pathname) ?? locationKey
+}
 
 function snap(location: Location, matches: UIMatch[]): RouteSnapshot {
   return {
@@ -71,6 +89,7 @@ function PageTransition({
   locCtx,
   classNames,
   timeout,
+  live,
   onExited,
   ...transitionProps
 }: {
@@ -78,6 +97,7 @@ function PageTransition({
   locCtx: unknown
   classNames: ClassNames
   timeout: number | { enter: number; exit: number }
+  live?: boolean
   onExited?: () => void
 } & Record<string, unknown>) {
   const nodeRef = useRef<HTMLDivElement | null>(null)
@@ -92,7 +112,11 @@ function PageTransition({
       onExited={onExited}
     >
       <div ref={nodeRef} className="animated-outlet-page">
-        <FrozenOutlet outlet={outlet} locCtx={locCtx} />
+        {live ? (
+          <UNSAFE_LocationContext.Provider value={locCtx as never}>{outlet}</UNSAFE_LocationContext.Provider>
+        ) : (
+          <FrozenOutlet outlet={outlet} locCtx={locCtx} />
+        )}
       </div>
     </CSSTransition>
   )
@@ -113,13 +137,28 @@ function LayoutScopeRegistrar({ transition }: { transition: RouteAnimType }) {
   return null
 }
 
-function AnimatedRoot({ layoutTransition, className }: { layoutTransition?: RouteAnimType; className?: string }) {
+function AnimatedRoot({
+  depth,
+  mode: modeProp,
+  tabs: tabsProp,
+  layoutTransition,
+  className,
+}: {
+  depth: number
+  mode?: OutletMode
+  tabs?: boolean
+  layoutTransition?: RouteAnimType
+  className?: string
+}) {
   const matches = useMatches()
   const location = useLocation()
   const navType = useNavigationType()
   const outlet = useOutlet()
   const locCtx = useContext(UNSAFE_LocationContext)
   const fallback = layoutTransition ?? 'cover'
+  const tabs = resolveTabs(tabsProp, location.state, depth)
+  const mode = resolveOutletMode(modeProp, matches, location.state, tabs)
+  const pageKey = pageTransitionKey(mode, depth, matches, location.pathname, location.key)
   const locationRef = useRef(location)
   locationRef.current = location
   const [settledLocation, setSettledLocation] = useState(location)
@@ -140,10 +179,18 @@ function AnimatedRoot({ layoutTransition, className }: { layoutTransition?: Rout
         }
       : snap(settledLocation, matches)
 
-  const activePlan: TransitionPlan = useMemo(
-    () => planTransition(navType, fromSnap, toSnap, fallback),
-    [
+  const activePlan: TransitionPlan = useMemo(() => {
+    if (depth === 0 && sameLayoutPage(fromSnap, toSnap)) {
+      return { classNames: { enter: '', enterActive: '', exit: '', exitActive: '' }, duration: 0 }
+    }
+    const effectiveNav =
+      mode === 'switch' && navType === 'PUSH' && fromSnap.path !== toSnap.path ? 'REPLACE' : navType
+    return planTransition(effectiveNav, fromSnap, toSnap, fallback, { tabs })
+  }, [
+      tabs,
+      mode,
       navType,
+      depth,
       location.key,
       settledLocation.key,
       fromSnap.key,
@@ -159,6 +206,8 @@ function AnimatedRoot({ layoutTransition, className }: { layoutTransition?: Rout
 
   const timeout =
     activePlan.duration > 0 ? { enter: activePlan.duration, exit: activePlan.duration } : 0
+
+  const liveOutlet = activePlan.duration <= 0
 
   const settledKeyRef = useRef(settledLocation.key)
   settledKeyRef.current = settledLocation.key
@@ -198,9 +247,10 @@ function AnimatedRoot({ layoutTransition, className }: { layoutTransition?: Rout
       childFactory={childFactory}
     >
       <PageTransition
-        key={location.key}
+        key={pageKey}
         outlet={outlet}
         locCtx={locCtx}
+        live={liveOutlet}
         classNames={activePlan.classNames}
         timeout={timeout}
         onExited={commitSettled}
@@ -209,7 +259,13 @@ function AnimatedRoot({ layoutTransition, className }: { layoutTransition?: Rout
   )
 }
 
-export default function AnimatedOutlet({ transition, className, children }: AnimatedOutletProps) {
+export default function AnimatedOutlet({
+  transition,
+  tabs,
+  mode,
+  className,
+  children,
+}: AnimatedOutletProps) {
   const depth = useContext(DepthContext)
 
   if (children !== undefined && transition !== undefined) {
@@ -220,7 +276,7 @@ export default function AnimatedOutlet({ transition, className, children }: Anim
     return (
       <DepthContext.Provider value={depth + 1}>
         {transition ? <LayoutScopeRegistrar transition={transition} /> : null}
-        <Outlet />
+        <AnimatedRoot depth={depth} tabs={tabs} mode={mode} layoutTransition={transition} className={className} />
       </DepthContext.Provider>
     )
   }
@@ -228,7 +284,7 @@ export default function AnimatedOutlet({ transition, className, children }: Anim
   return (
     <DepthContext.Provider value={1}>
       {transition ? <LayoutScopeRegistrar transition={transition} /> : null}
-      <AnimatedRoot layoutTransition={transition} className={className} />
+      <AnimatedRoot depth={0} tabs={tabs} mode={mode} layoutTransition={transition} className={className} />
     </DepthContext.Provider>
   )
 }

@@ -1,12 +1,11 @@
 # react-router-dom-animate
 
-为 [react-router-dom](https://reactrouter.com/) 提供栈式页面转场的轻量方案，基于 [react-transition-group](https://reactcommunity.org/react-transition-group/)。
+为 [react-router-dom](https://reactrouter.com/) 提供栈式页面转场的轻量动画库，基于 [react-transition-group](https://reactcommunity.org/react-transition-group/)。
 
 ## 特性
 
-- 内置 CSS，`import { AnimatedOutlet }` 时随 JS 自动注入
-- 支持嵌套 `AnimatedOutlet`，不同区域可用不同动画
-- 两种等效的配置方式，按习惯任选
+- 支持嵌套 `AnimatedOutlet`，不同区域可配置不同动画
+- 支持 JS（`navigate` + `state`）与组件（`handle` / props）两种配置方式
 - 可通过 `registerAnimPreset` 扩展自定义预设
 
 ## 安装
@@ -25,7 +24,7 @@ npm install react-router-dom-animate
 import { createBrowserRouter } from 'react-router-dom'
 import { AnimatedOutlet } from 'react-router-dom-animate'
 
-// 1. 根路由挂上 AnimatedOutlet
+// 1. 根路由挂上 AnimatedOutlet（默认 cover）
 // 2. 子路由照常写页面
 // 3. 跳转照旧用 navigate / Link
 const router = createBrowserRouter([
@@ -39,159 +38,168 @@ const router = createBrowserRouter([
 ])
 ```
 
-## 设置动画
+## AnimatedOutlet
 
-告诉库「这次换页用什么动画」，有 **两种方式**，**效果完全一样**，选一个用即可。
+| Prop | 作用 | 默认 |
+|------|------|------|
+| `transition` | 动画类型 | `cover` |
+| `tabs` | Tab 平级切换；转场范围限定在 Outlet 子树，不包含同级导航布局 | — |
+| `mode` | `stack` 压栈进详情；`switch` 平级切换（设 `tabs` 时自动 `switch`） | `stack` |
 
-| | 方式一：跳转时指定 | 方式二：路由上指定 |
-|--|-------------------|-------------------|
-| 写在哪 | `navigate` / `Link` 的 `state` | 路由里的 `<AnimatedOutlet transition>` |
-| 路由结构 | 页面直接作为子路由 | 用 `AnimatedOutlet` 包住页面 |
-| 怎么跳 | `state: { transition: 'fade' }` | 普通 `navigate` / `Link` 即可 |
+`transition` 可选：`cover` · `slide` · `fade` · `scale` · `modal` · `none`
 
-### 示例：两种方式效果相同
+根级默认 `cover`；全站改用其他类型时，例如：`<AnimatedOutlet transition="slide" />`。后退 `navigate(-1)` 不必再传 `state`。
 
-目标都是进入 `AboutPage` 时播放 **fade** 动画。
+### 两种写法，效果相同
 
-**方式一 — 跳转时带上 `state`**
+写法 A 在跳转时用 `state` 传配置；写法 B 在路由 `handle` 或 `<AnimatedOutlet>` 上声明，跳转保持普通写法。
+
+| | 写法 A：`navigate` + `state` | 写法 B：路由 / 组件声明 |
+|--|------------------------------|-------------------------|
+| 配置写在哪 | `navigate()` 的第二个参数 | 路由 `handle` 或 `<AnimatedOutlet …>` |
+| 路由怎么写 | 子页面直接挂路由 | `handle` 和/或包一层 `AnimatedOutlet` |
+| 怎么跳转 | `navigate(to, { state: { … } })` | `navigate(to)` / `Link` / `NavLink` |
+
+下面三个场景，两种写法**视觉效果一致**。Demo 中 `/push/*` 对应 A，`/wrap/*` 对应 B。
+
+#### 1. 普通换页（fade）
+
+**写法 A**
 
 ```tsx
-// routes.tsx
+// routes.tsx — 页面直接作为子路由
 { path: 'about', element: <AboutPage /> }
 
-// 任意页面里
+// 跳转时带上 state
 navigate('/about', { state: { transition: 'fade' } })
-<Link to="/about" state={{ transition: 'fade' }}>关于</Link>
 ```
 
-**方式二 — 路由上包一层 `AnimatedOutlet`**
+**写法 B**
 
 ```tsx
-// routes.tsx
+// routes.tsx — 在路由上声明动画
 {
   path: 'about',
+  handle: { transition: 'fade' },
   element: (
     <AnimatedOutlet transition="fade">
-      <AboutPage />
+      <AboutPage /> // 也可以直接在 AboutPage 页面里包裹一个 AnimatedOutlet 组件一样效果
     </AnimatedOutlet>
   ),
 }
 
-// 任意页面里 — 写法与普通 RR 相同
+// 普通跳转即可
 navigate('/about')
-<Link to="/about">关于</Link>
 ```
 
-### 全局默认动画
+#### 2. 底栏 Tab（fade）
 
-如果大部分页面用同一种动画，在**根级** `AnimatedOutlet` 上配置即可，子页面跳转时不用每次写 `state`：
+布局上将导航与页面出口分离：`<nav>` 与 `<AnimatedOutlet>` 同级，转场仅作用于 Outlet 子树。
+
+**写法 A**
 
 ```tsx
-// 全站默认 slide；单次跳转仍可用 state 临时改成 fade
-{
-  element: <AnimatedOutlet transition="slide" />,
-  children: [
-    { path: 'list', element: <ListPage /> },
-    { path: 'detail', element: <DetailPage /> },
-  ],
-}
+// routes.tsx
+{ path: 'tabs', element: <TabsLayout />, children: [
+  { path: 'a', element: <TabA /> },
+  { path: 'b', element: <TabB /> },
+]}
+
+// TabsLayout.tsx
+const navigate = useNavigate()
+<nav>
+  <button type="button" onClick={() => navigate('/tabs/a', { replace: true, state: { tabs: true, transition: 'fade' } })}>A</button>
+  <button type="button" onClick={() => navigate('/tabs/b', { replace: true, state: { tabs: true, transition: 'fade' } })}>B</button>
+</nav>
+<AnimatedOutlet />
 ```
 
-也可以给**单个路由**单独指定（会覆盖全局默认）：
+**写法 B**
 
 ```tsx
-{
-  element: <AnimatedOutlet transition="slide" />,  // 全局默认 slide
-  children: [
-    { path: 'list', element: <ListPage /> },
-    {
-      path: 'modal',
-      element: (
-        <AnimatedOutlet transition="modal">  {/* 仅 modal 路由用 modal 动画 */}
-          <ModalPage />
-        </AnimatedOutlet>
-      ),
-    },
-  ],
-}
-```
-
-**未配置任何 `transition` 时**，fallback 为 `cover`。可选值见「内置预设」。
-
-**后退** `navigate(-1)` 无需再传 `state`，库会自动匹配退场动画。
-
-### 嵌套布局（Tab 等场景）
-
-进入 Tab 区域用外层动画（如 `cover`），Tab 之间切换用内层 `fade`。需要**路由 + 布局组件**配合：
-
-```tsx
-// routes.tsx — 注册 Tab 子路由，并挂上 TabsLayout
+// routes.tsx
 {
   path: 'tabs',
+  handle: { tabs: true, transition: 'fade' },
   element: <TabsLayout />,
   children: [
     { path: 'a', element: <TabA /> },
     { path: 'b', element: <TabB /> },
   ],
 }
+
+// TabsLayout.tsx
+<nav>
+  <NavLink to="/tabs/a" replace>A</NavLink>
+  <NavLink to="/tabs/b" replace>B</NavLink>
+</nav>
+<AnimatedOutlet tabs transition="fade" />
 ```
+
+`transition="slide"` 时左右滑动；路径无法表示 Tab 顺序时，补充 `tabIndex`（A 写在 `state`，B 写在路由 `handle`）。
+
+#### 3. 列表 → 详情（stack + cover）
+
+**写法 A**
 
 ```tsx
-// TabsLayout.tsx — 内层 AnimatedOutlet 只管 Tab 切换
-import { NavLink } from 'react-router-dom'
-import { AnimatedOutlet } from 'react-router-dom-animate'
+// routes.tsx
+{ path: 'catalog', element: <CatalogLayout />, children: [
+  { index: true, element: <CatalogList /> },
+  { path: ':id', element: <CatalogDetail /> },
+]}
 
-export function TabsLayout() {
-  return (
-    <div>
-      <nav>
-        <NavLink to="/tabs/a" replace>Tab A</NavLink>
-        <NavLink to="/tabs/b" replace>Tab B</NavLink>
-      </nav>
-      <AnimatedOutlet transition="fade" />
-    </div>
-  )
-}
+// CatalogLayout.tsx
+<AnimatedOutlet />
+
+// CatalogList.tsx
+const navigate = useNavigate()
+<button type="button" onClick={() => navigate('/catalog/1', { state: { mode: 'stack', transition: 'cover' } })}>
+  商品 1
+</button>
 ```
 
-外层根 `AnimatedOutlet` 负责「进入 / 离开 Tab 模块」；内层负责「A ↔ B 切换」。
+**写法 B**
 
-## 内置预设
+```tsx
+// routes.tsx
+{
+  path: 'catalog',
+  handle: { mode: 'stack', transition: 'cover' },
+  element: <CatalogLayout />,
+  children: [
+    { index: true, element: <CatalogList /> },
+    { path: ':id', element: <CatalogDetail /> },
+  ],
+}
 
-| 预设 | 效果 |
-|------|------|
-| `cover` | 新页右进覆盖旧页（**默认**） |
-| `slide` | 新页右进，旧页左移留底 |
-| `fade` | 交叉淡入淡出 |
-| `scale` | 缩放进入 / 退出 |
-| `modal` | 底部滑入 / 向下滑出 |
-| `none` | 无动画 |
+// CatalogLayout.tsx
+<AnimatedOutlet mode="stack" transition="cover" />
 
-## 本地 Demo
+// CatalogList.tsx
+<NavLink to="/catalog/1">商品 1</NavLink>
+```
+
+## Demo
 
 ```bash
-npm run demo       # 先 build 库，再用 dist 产物跑 Demo
-npm run demo:src   # 直接联调 src 源码（Vite 会单独加载 anim.css）
+npm run demo
 ```
 
-Demo 中 `/push/*` 演示方式一（跳转带 `state`），`/wrap/*` 演示方式二（路由包 `AnimatedOutlet`），效果一一对应。
+`http://localhost:5180` — `/push/*` 是写法 A，`/wrap/*` 是写法 B。
 
 ## API
 
-| 导出 | 用途 |
+| 导出 | 说明 |
 |------|------|
-| `AnimatedOutlet` | 转场出口组件（日常使用） |
-| `AnimatedOutletProps` | 组件 props 类型 |
-| `RouteAnimType` | `transition` 字段类型 |
-| `registerAnimPreset` | 注册自定义动画预设（高级，可选） |
-| `AnimPreset` | 配合 `registerAnimPreset` 的类型 |
+| `AnimatedOutlet` | 转场出口 |
+| `registerAnimPreset` | 注册自定义 `transition` |
+| `RouteAnimType` · `OutletMode` · `AnimPreset` | 类型 |
 
 ## 开发与验证
 
 ```bash
-npm run build   # 构建库
-npm test        # 单元测试
-npm run e2e     # Playwright 回归
+npm run build && npm test && npm run e2e
 ```
 
 MIT

@@ -48,7 +48,7 @@ describe('AnimatedOutlet integration', () => {
 
   it('嵌套 layout transition 不报错', () => {
     function TabsLayout() {
-      return <AnimatedOutlet transition="fade" />
+      return <AnimatedOutlet tabs transition="fade" />
     }
 
     const nested: RouteObject[] = [
@@ -66,6 +66,61 @@ describe('AnimatedOutlet integration', () => {
     const router = createMemoryRouter(nested, { initialEntries: ['/'] })
     render(<RouterProvider router={router} />)
     expect(screen.getByTestId('page').textContent).toBe('tab:/')
+  })
+
+  it('Tab 切换走内层 fade，重复点击当前 Tab 不触发动画', async () => {
+    function TabsLayout() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <nav>
+            <button type="button" data-testid="tab-a" onClick={() => navigate('/tabs/a', { replace: true })}>
+              A
+            </button>
+            <button type="button" data-testid="tab-b" onClick={() => navigate('/tabs/b')}>
+              B
+            </button>
+          </nav>
+          <AnimatedOutlet tabs transition="fade" />
+        </>
+      )
+    }
+
+    const tabRoutes: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          {
+            path: '/tabs',
+            handle: { transition: 'fade' },
+            element: <TabsLayout />,
+            children: [
+              { path: 'a', handle: { tabIndex: 0 }, element: <Page name="a" /> },
+              { path: 'b', handle: { tabIndex: 1 }, element: <Page name="b" /> },
+            ],
+          },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(tabRoutes, { initialEntries: ['/tabs/a'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('page').textContent).toBe('a:/tabs/a'))
+
+    fireEvent.click(screen.getByTestId('tab-b'))
+    await waitFor(() => {
+      const classesOnSwitch = [...document.querySelectorAll('.animated-outlet-page')].map((e) => e.className)
+      expect(classesOnSwitch.some((c) => /fade-enter|fade-leave|fr-animating/.test(c))).toBe(true)
+      expect(classesOnSwitch.some((c) => /slide-next-enter|slide-prev-leave/.test(c))).toBe(false)
+    })
+
+    await waitFor(() => expect(screen.getByTestId('page').textContent).toBe('b:/tabs/b'), { timeout: 2000 })
+    await waitFor(() => expect(document.querySelectorAll('.fr-animating').length).toBe(0), { timeout: 2000 })
+
+    const countBefore = document.querySelectorAll('.animated-outlet-page').length
+    fireEvent.click(screen.getByTestId('tab-b'))
+    expect(document.querySelectorAll('.fr-animating').length).toBe(0)
+    expect(document.querySelectorAll('.animated-outlet-page').length).toBe(countBefore)
   })
 })
 

@@ -101,4 +101,15 @@ test.describe('首页 JS vs Link', () => {
     await page.getByTestId('tab-link-b').last().click()
     await expect(page.getByTestId('tab-b-page')).toBeVisible()
   })
+
+  test('Tabs 重复点击当前 Tab 不堆栈', async ({ page }) => {
+    await page.getByTestId('push-tabs').click()
+    await expect(page).toHaveURL('/push/tabs/a')
+    await page.getByTestId('tab-link-a').last().click()
+    await page.getByTestId('tab-link-a').last().click()
+    await page.getByTestId('tab-link-a').last().click()
+    await expect(page).toHaveURL('/push/tabs/a')
+    await expect(page.getByTestId('tab-a-page')).toBeVisible()
+    await expect(page.locator('.animated-outlet-page.fr-animating')).toHaveCount(0)
+  })
 })

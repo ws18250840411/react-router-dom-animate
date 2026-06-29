@@ -2,6 +2,7 @@ import type { UIMatch } from 'react-router-dom'
 
 export type RouteAnimType = string
 export type NavType = 'PUSH' | 'POP' | 'REPLACE'
+export type OutletMode = 'stack' | 'switch'
 
 export interface ClassNames {
   appear?: string

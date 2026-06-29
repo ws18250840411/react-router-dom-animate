@@ -6,6 +6,8 @@ import {
   planTransition,
   registerAnimPreset,
   resolveAnim,
+  resolveOutletMode,
+  resolveTabs,
 } from '../transition'
 import type { RouteSnapshot } from '../types'
 
@@ -73,6 +75,45 @@ describe('classNamesFor', () => {
       expect(cn.enterActive).toBe('fade-enter')
       expect(cn.exitActive).toBe('fade-leave')
     })
+  })
+})
+
+describe('resolveOutletMode', () => {
+  it('prop 优先于 state 与 handle', () => {
+    const matches = [{ id: 'tabs', handle: { mode: 'switch' } }] as never
+    expect(resolveOutletMode('stack', matches, { mode: 'switch' })).toBe('stack')
+  })
+
+  it('tabs 强制 switch', () => {
+    expect(resolveOutletMode('stack', [], null, true)).toBe('switch')
+  })
+
+  it('state.mode 优先于 handle', () => {
+    const matches = [{ id: 'tabs', handle: { mode: 'stack' } }] as never
+    expect(resolveOutletMode(undefined, matches, { mode: 'switch' })).toBe('switch')
+  })
+
+  it('handle.mode 兜底', () => {
+    const matches = [{ id: 'tabs', handle: { mode: 'switch' } }] as never
+    expect(resolveOutletMode(undefined, matches, null)).toBe('switch')
+  })
+
+  it('默认 stack', () => {
+    expect(resolveOutletMode(undefined, [], null)).toBe('stack')
+  })
+})
+
+describe('resolveTabs', () => {
+  it('prop 优先', () => {
+    expect(resolveTabs(false, { tabs: true }, 1)).toBe(false)
+  })
+
+  it('嵌套 Outlet 可读 state.tabs', () => {
+    expect(resolveTabs(undefined, { tabs: true }, 1)).toBe(true)
+  })
+
+  it('根 Outlet 忽略 state.tabs', () => {
+    expect(resolveTabs(undefined, { tabs: true }, 0)).toBe(false)
   })
 })
 
@@ -162,6 +203,40 @@ describe('planTransition', () => {
     const { classNames } = planTransition('REPLACE', snap('/home'), snap('/profile'), 'fade')
     expect(classNames.enterActive).toBe('fade-enter')
     expect(classNames.exitActive).toBe('fade-leave')
+  })
+
+  it('同 pathname 重复导航返回 IDLE', () => {
+    const plan = planTransition('REPLACE', snap('/tabs/a', 'k1'), snap('/tabs/a', 'k2'), 'fade')
+    expect(plan.duration).toBe(0)
+    expect(plan.classNames.enterActive).toBe('')
+  })
+
+  it('tabs slide A→B 右进', () => {
+    const tabSnap = (path: string, tabIndex: number, key = path) =>
+      ({ path, key, state: null, matches: [{ handle: { tabIndex } }] }) as never
+    const { classNames } = planTransition(
+      'REPLACE',
+      tabSnap('/tabs/a', 0),
+      tabSnap('/tabs/b', 1),
+      'slide',
+      { tabs: true },
+    )
+    expect(classNames.enterActive).toBe('tabs-slide-enter-forward')
+    expect(classNames.exitActive).toBe('tabs-slide-leave-forward')
+  })
+
+  it('tabs slide B→A 左进', () => {
+    const tabSnap = (path: string, tabIndex: number, key = path) =>
+      ({ path, key, state: null, matches: [{ handle: { tabIndex } }] }) as never
+    const { classNames } = planTransition(
+      'REPLACE',
+      tabSnap('/tabs/b', 1),
+      tabSnap('/tabs/a', 0),
+      'slide',
+      { tabs: true },
+    )
+    expect(classNames.enterActive).toBe('tabs-slide-enter-back')
+    expect(classNames.exitActive).toBe('tabs-slide-leave-back')
   })
 
   it('不含 fr-exit-on-top', () => {

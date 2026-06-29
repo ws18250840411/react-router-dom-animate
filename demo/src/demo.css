@@ -204,6 +204,132 @@ button.back {
   background: #2563eb;
 }
 
+/* 招行 iOS 26 式：悬浮毛玻璃底栏 + 小胶囊滑块 */
+.app-shell--floating-tab {
+  position: relative;
+  background: #f2f2f7;
+}
+
+.app-shell--floating-tab .app-main {
+  padding-bottom: 88px;
+}
+
+.tabs-indicator-dock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  padding: 0 14px calc(14px + env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
+}
+
+.tabs-indicator-dock .tabs-indicator {
+  pointer-events: auto;
+}
+
+.tabs-indicator {
+  position: relative;
+  gap: 0;
+  padding: 6px 8px;
+  border-top: none;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  box-shadow:
+    0 0 0 0.5px rgba(255, 255, 255, 0.7) inset,
+    0 8px 28px rgba(0, 0, 0, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.tabs-indicator.is-dragging {
+  touch-action: none;
+  user-select: none;
+  cursor: grabbing;
+}
+
+.tabs-indicator-pill.is-dragging {
+  transition: none !important;
+  transform: scale(1.08);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.08),
+    0 10px 24px rgba(0, 0, 0, 0.14);
+}
+
+.tabs-indicator-pill {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  width: 0;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 4px 14px rgba(0, 0, 0, 0.08);
+  will-change: left, width;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+}
+
+.tabs-indicator-pill.is-ready {
+  transition:
+    left 460ms cubic-bezier(0.34, 1.28, 0.64, 1),
+    width 460ms cubic-bezier(0.34, 1.28, 0.64, 1),
+    opacity 120ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabs-indicator-pill.is-ready {
+    transition: none;
+  }
+}
+
+.tabs-indicator .tab-indicator-item {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: transparent;
+  color: #8e8e93;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 6px 4px 4px;
+  min-height: 49px;
+  transition: color 200ms ease;
+}
+
+.tabs-indicator .tab-indicator-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  transition: transform 160ms cubic-bezier(0.34, 1.1, 0.64, 1);
+}
+
+.tabs-indicator.is-dragging .tab-indicator-icon {
+  transition: none;
+}
+
+.tabs-indicator .tab-indicator-label {
+  line-height: 1.1;
+}
+
+.tabs-indicator .tab-indicator-item.is-active,
+.tabs-indicator .tab-indicator-item.active {
+  background: transparent;
+  color: #1c1c1e;
+  font-weight: 600;
+}
+
 .modal-shell {
   position: relative;
   display: flex;

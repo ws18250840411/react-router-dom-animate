@@ -5,12 +5,16 @@ import type {
   AnimPresetRegistry,
   ClassNames,
   NavType,
+  OutletMode,
   RouteAnimType,
   RouteSnapshot,
   TransitionPlan,
 } from './types'
 
 const STATE_KEY = 'transition'
+const MODE_KEY = 'mode'
+const TABS_KEY = 'tabs'
+const TAB_INDEX_KEY = 'tabIndex'
 const DEFAULT_ANIM: RouteAnimType = 'cover'
 const BASE = 'fr-animating fr-anim'
 
@@ -77,6 +81,20 @@ const SLIDE_BACK: ClassNames = {
   enterActive: 'slide-prev-enter-slide',
   exit: BASE,
   exitActive: 'slide-next-leave',
+}
+
+const TAB_SLIDE_FORWARD: ClassNames = {
+  enter: BASE,
+  enterActive: 'tabs-slide-enter-forward',
+  exit: BASE,
+  exitActive: 'tabs-slide-leave-forward',
+}
+
+const TAB_SLIDE_BACK: ClassNames = {
+  enter: BASE,
+  enterActive: 'tabs-slide-enter-back',
+  exit: BASE,
+  exitActive: 'tabs-slide-leave-back',
 }
 
 const FADE_FORWARD: ClassNames = {
@@ -204,9 +222,21 @@ export function layoutRouteId(matches: UIMatch[], pathname: string): string | un
   const leaf = matches[matches.length - 1]
   const leafPath = normalizePath(leaf.pathname)
   const curPath = normalizePath(pathname)
-  const leafActive = leafPath === curPath || (leafPath !== '/' && curPath.startsWith(`${leafPath}/`))
+  const leafActive =
+    leafPath === curPath || (leafPath !== '/' && curPath.startsWith(`${leafPath}/`))
+
+  if (!leafActive && matches.length >= 3 && !leafPath.startsWith('/')) {
+    return matches[matches.length - 2]?.id
+  }
+
   if (leafActive && matches.length >= 3) return matches[matches.length - 2]?.id
   return matches[matches.length - 1]?.id
+}
+
+export function sameLayoutPage(from: RouteSnapshot, to: RouteSnapshot): boolean {
+  const fromId = layoutRouteId(from.matches as UIMatch[], from.path)
+  const toId = layoutRouteId(to.matches as UIMatch[], to.path)
+  return fromId !== undefined && fromId === toId
 }
 
 const IDLE: TransitionPlan = {
@@ -229,6 +259,75 @@ function fromState(state: unknown): RouteAnimType | undefined {
   return parseRouteAnim((state as Record<string, unknown>)[STATE_KEY])
 }
 
+function parseOutletMode(value: unknown): OutletMode | undefined {
+  if (value === 'stack' || value === 'switch') return value
+  return undefined
+}
+
+function modeFromHandle(matches: RouteSnapshot['matches']): OutletMode | undefined {
+  if (!matches?.length) return undefined
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const parsed = parseOutletMode((matches[i]?.handle as { mode?: unknown } | undefined)?.mode)
+    if (parsed) return parsed
+  }
+  return undefined
+}
+
+function modeFromState(state: unknown): OutletMode | undefined {
+  if (!state || typeof state !== 'object') return undefined
+  return parseOutletMode((state as Record<string, unknown>)[MODE_KEY])
+}
+
+export function resolveOutletMode(
+  prop: OutletMode | undefined,
+  matches: RouteSnapshot['matches'],
+  state: unknown,
+  tabs?: boolean,
+): OutletMode {
+  if (tabs) return 'switch'
+  return prop ?? modeFromState(state) ?? modeFromHandle(matches) ?? 'stack'
+}
+
+function tabsFromState(state: unknown): boolean | undefined {
+  if (!state || typeof state !== 'object') return undefined
+  const raw = (state as Record<string, unknown>)[TABS_KEY]
+  return raw === true ? true : undefined
+}
+
+export function resolveTabs(
+  prop: boolean | undefined,
+  state: unknown,
+  depth: number,
+): boolean {
+  if (prop !== undefined) return prop
+  if (depth > 0 && tabsFromState(state)) return true
+  return false
+}
+
+function tabIndexFromSnapshot(snap: RouteSnapshot): number {
+  if (snap.state && typeof snap.state === 'object') {
+    const idx = (snap.state as Record<string, unknown>)[TAB_INDEX_KEY]
+    if (typeof idx === 'number') return idx
+  }
+  for (let i = snap.matches.length - 1; i >= 0; i--) {
+    const idx = (snap.matches[i]?.handle as { tabIndex?: unknown } | undefined)?.tabIndex
+    if (typeof idx === 'number') return idx
+  }
+  const leaf = normalizePath(snap.path).split('/').pop() ?? snap.path
+  return leaf.charCodeAt(0)
+}
+
+function classNamesForTabs(from: RouteSnapshot, to: RouteSnapshot, fallback: RouteAnimType): ClassNames {
+  const anim = resolveAnim(to, fallback)
+  if (anim === 'slide') {
+    const fromIdx = tabIndexFromSnapshot(from)
+    const toIdx = tabIndexFromSnapshot(to)
+    return toIdx > fromIdx ? TAB_SLIDE_FORWARD : TAB_SLIDE_BACK
+  }
+  if (anim === 'fade') return FADE_FORWARD
+  return classNamesFor('REPLACE', resolveAnim(from, fallback), anim)
+}
+
 export function resolveAnim(snapshot: RouteSnapshot, fallback: RouteAnimType): RouteAnimType {
   return (
     fromState(snapshot.state) ??
@@ -244,10 +343,15 @@ export function planTransition(
   from: RouteSnapshot,
   to: RouteSnapshot,
   fallback: RouteAnimType,
+  options?: { tabs?: boolean },
 ): TransitionPlan {
+  if (normalizePath(from.path) === normalizePath(to.path)) return IDLE
+
   const fromType = resolveAnim(from, fallback)
   const toType = resolveAnim(to, fallback)
-  const classNames = classNamesFor(nav, fromType, toType)
+  const classNames = options?.tabs
+    ? classNamesForTabs(from, to, fallback)
+    : classNamesFor(nav, fromType, toType)
 
   if (!isAnimated(classNames)) return IDLE
 

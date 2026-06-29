@@ -5,4 +5,4 @@ export type { AnimatedOutletProps } from './outlet'
 
 export { registerAnimPreset } from './transition'
 
-export type { RouteAnimType, AnimPreset } from './types'
+export type { RouteAnimType, AnimPreset, OutletMode } from './types'

@@ -23,7 +23,22 @@ const EXPLICIT_SCENARIOS: Scenario[] = [
   { key: 'fade', label: 'Fade', transition: 'fade', pushTo: '/push/fade', wrapTo: '/wrap/fade' },
   { key: 'scale', label: 'Scale', transition: 'scale', pushTo: '/push/scale', wrapTo: '/wrap/scale' },
   { key: 'modal', label: 'Modal', transition: 'modal', pushTo: '/push/modal', wrapTo: '/wrap/modal' },
-  { key: 'tabs', label: 'Tabs', transition: 'fade', pushTo: '/push/tabs/a', wrapTo: '/wrap/tabs/a' },
+  { key: 'tabs', label: 'Tabs · fade', transition: 'fade', pushTo: '/push/tabs/a', wrapTo: '/wrap/tabs/a' },
+  {
+    key: 'tabs-slide',
+    label: 'Tabs · slide (A/B/C)',
+    transition: 'slide',
+    pushTo: '/push/tabs-slide/a',
+    wrapTo: '/wrap/tabs-slide/a',
+  },
+  {
+    key: 'tabs-indicator',
+    label: 'Tabs · 毛玻璃滑块',
+    transition: 'none',
+    pushTo: '/push/tabs-indicator/a',
+    wrapTo: '/wrap/tabs-indicator/a',
+  },
+  { key: 'catalog', label: 'Catalog · stack', transition: 'cover', pushTo: '/push/catalog', wrapTo: '/wrap/catalog' },
 ]
 
 function MatrixHead() {
@@ -44,9 +59,9 @@ export function Home() {
     <div className="page" data-testid="home-page">
       <h1>Demo</h1>
       <p className="lede">
-        只需顶层 <code>AnimatedOutlet</code> + 原生 <code>useNavigate</code> / <code>Link</code>。
-        显式转场在 JS 里写 <code>state: {'{ transition: "fade" }'}</code>（<code>/push</code>），
-        或在 <code>/wrap</code> 路由 <code>handle</code> 声明。
+        写法 A（<code>/push</code>）：<code>navigate(to, {'{ state }'})</code> 传动画配置，Outlet 保持最简。
+        写法 B（<code>/wrap</code>）：在路由 <code>handle</code> 或 <code>AnimatedOutlet</code> 上声明，跳转用普通{' '}
+        <code>navigate</code> / <code>NavLink</code>。
       </p>
 
       <section className="matrix-section" data-testid="matrix-default">
@@ -81,7 +96,7 @@ export function Home() {
               <button
                 type="button"
                 data-testid={`push-${s.key}`}
-                onClick={() => navigate(s.pushTo, { state: { transition: s.transition } })}
+                onClick={() => navigate(s.pushTo, { state: { transition: s.transition, tabs: !!s.key.startsWith('tabs') } })}
               >
                 JS
               </button>
@@ -93,7 +108,9 @@ export function Home() {
         </div>
       </section>
 
-      <p className="hint">Tabs 内层为 fade。</p>
+      <p className="hint">
+        Tabs 用 tabs + fade/slide（slide 含 A/B/C 三 Tab）；滑块示例为 none + CSS 指示器；Catalog 演示列表→详情 stack。
+      </p>
     </div>
   )
 }
