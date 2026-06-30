@@ -5,6 +5,9 @@
   height: 100%;
   overflow: hidden;
   isolation: isolate;
+  /* Restrict paint scope so the browser can skip checking outside this container.
+     Safe here because overflow:hidden already clips all child content. */
+  contain: paint;
 }
 
 :root {
@@ -23,6 +26,10 @@
   height: 100%;
   overflow: hidden;
   background-color: var(--fr-page-bg, #f9fafb);
+  /* Pre-promote to GPU compositing layer so the first animation doesn't
+     incur a WebView cold-start cost (relevant on iOS WKWebView / Android WebView). */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 
 /* 转场叠层：对齐 fexd TransitionSwitch .animating + .animating 绝对定位 */
@@ -37,10 +44,38 @@
   background-color: var(--fr-page-bg-dark, #030712);
 }
 
+@media (prefers-color-scheme: dark) {
+  .animated-outlet-page {
+    background-color: var(--fr-page-bg-dark, #030712);
+  }
+}
+
+/* keepAlive tabs: inactive tabs stay mounted but hidden.
+   Use visibility:hidden + position:absolute instead of display:none so the
+   browser keeps the element rendered in memory — this preserves scroll
+   position when switching back to a previously visited tab. */
+.animated-outlet-page.fr-tab-inactive {
+  visibility: hidden;
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* prefers-reduced-motion: override */
+/* Respect the user's system-level "reduce motion" preference.
+   When enabled, all page transitions become instant cuts instead of animations. */
+@media (prefers-reduced-motion: reduce) {
+  .animated-outlet-page.fr-animating {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 .animated-outlet-page.fr-animating {
   z-index: 10;
   animation-fill-mode: both;
-  will-change: transform;
+  will-change: transform, opacity;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
   pointer-events: none;
@@ -59,7 +94,6 @@
 
 .animated-outlet-page.fr-modal.fr-anim,
 .animated-outlet-page.modal-bg-leave,
-.animated-outlet-page.modal-bg-enter,
 .animated-outlet-page.slide-up-enter,
 .animated-outlet-page.slide-up-leave {
   -webkit-animation-timing-function: var(--fr-ease-spring);
@@ -212,6 +246,26 @@
   animation-name: fr-slide-prev-enter-slide;
 }
 
+@-webkit-keyframes fr-slide-prev-enter-slide {
+  from {
+    -webkit-transform: translate3d(-33%, 0, 0);
+    transform: translate3d(-33%, 0, 0);
+  }
+  to {
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes fr-slide-prev-enter-slide {
+  from {
+    transform: translate3d(-33%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
 /* Tab pager：左右对称平移，无 stack 视差 */
 .animated-outlet-page.tabs-slide-enter-forward {
   z-index: 2;
@@ -317,26 +371,6 @@
   }
 }
 
-@-webkit-keyframes fr-slide-prev-enter-slide {
-  from {
-    -webkit-transform: translate3d(-33%, 0, 0);
-    transform: translate3d(-33%, 0, 0);
-  }
-  to {
-    -webkit-transform: translate3d(0, 0, 0);
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-@keyframes fr-slide-prev-enter-slide {
-  from {
-    transform: translate3d(-33%, 0, 0);
-  }
-  to {
-    transform: translate3d(0, 0, 0);
-  }
-}
-
 .animated-outlet-page.fade-enter {
   -webkit-animation-name: fr-fade-enter;
   animation-name: fr-fade-enter;
@@ -391,24 +425,24 @@
 @-webkit-keyframes fr-scale-enter {
   from {
     opacity: 0;
-    -webkit-transform: scale(0.92);
-    transform: scale(0.92);
+    -webkit-transform: translate3d(0, 0, 0) scale(0.92);
+    transform: translate3d(0, 0, 0) scale(0.92);
   }
   to {
     opacity: 1;
-    -webkit-transform: scale(1);
-    transform: scale(1);
+    -webkit-transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
 @keyframes fr-scale-enter {
   from {
     opacity: 0;
-    transform: scale(0.92);
+    transform: translate3d(0, 0, 0) scale(0.92);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
@@ -420,24 +454,24 @@
 @-webkit-keyframes fr-scale-leave {
   from {
     opacity: 1;
-    -webkit-transform: scale(1);
-    transform: scale(1);
+    -webkit-transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
   }
   to {
     opacity: 0;
-    -webkit-transform: scale(0.92);
-    transform: scale(0.92);
+    -webkit-transform: translate3d(0, 0, 0) scale(0.92);
+    transform: translate3d(0, 0, 0) scale(0.92);
   }
 }
 
 @keyframes fr-scale-leave {
   from {
     opacity: 1;
-    transform: scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
   }
   to {
     opacity: 0;
-    transform: scale(0.92);
+    transform: translate3d(0, 0, 0) scale(0.92);
   }
 }
 
@@ -511,45 +545,20 @@
 
 @-webkit-keyframes fr-modal-bg-leave {
   from {
-    -webkit-transform: scale(1);
-    transform: scale(1);
+    -webkit-transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
   }
   to {
-    -webkit-transform: scale(0.92);
-    transform: scale(0.92);
+    -webkit-transform: translate3d(0, 0, 0) scale(0.92);
+    transform: translate3d(0, 0, 0) scale(0.92);
   }
 }
 
 @keyframes fr-modal-bg-leave {
   from {
-    transform: scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
   }
   to {
-    transform: scale(0.92);
-  }
-}
-
-.animated-outlet-page.modal-bg-enter {
-  -webkit-animation-name: fr-modal-bg-enter;
-  animation-name: fr-modal-bg-enter;
-}
-
-@-webkit-keyframes fr-modal-bg-enter {
-  from {
-    -webkit-transform: scale(0.92);
-    transform: scale(0.92);
-  }
-  to {
-    -webkit-transform: scale(1);
-    transform: scale(1);
-  }
-}
-
-@keyframes fr-modal-bg-enter {
-  from {
-    transform: scale(0.92);
-  }
-  to {
-    transform: scale(1);
+    transform: translate3d(0, 0, 0) scale(0.92);
   }
 }
