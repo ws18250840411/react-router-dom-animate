@@ -10,6 +10,13 @@ import { TabsLayout } from './pages/TabsLayout'
 import { TabsIndicatorLayout } from './pages/TabsIndicatorLayout'
 import { CatalogLayout, CatalogList, CatalogDetail } from './pages/CatalogLayout'
 import { AnimPage } from './pages/AnimPage'
+import {
+  KeepAliveIndex,
+  KeepAliveLayout,
+  KeepAliveTabA,
+  KeepAliveTabB,
+  KeepAliveTabC,
+} from './pages/KeepAliveDemo'
 
 const tabChildren: RouteObject[] = [
   { index: true, handle: { tabIndex: 0 }, element: <TabA /> },
@@ -35,6 +42,17 @@ export const routes: RouteObject[] = [
     ),
     children: [
       { index: true, element: <Home /> },
+
+      {
+        path: 'keep-alive',
+        element: <KeepAliveLayout />,
+        children: [
+          { index: true, element: <KeepAliveIndex /> },
+          { path: 'a', element: <KeepAliveTabA /> },
+          { path: 'b', element: <KeepAliveTabB /> },
+          { path: 'c', element: <KeepAliveTabC /> },
+        ],
+      },
 
       {
         path: 'push',

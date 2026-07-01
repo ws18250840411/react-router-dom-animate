@@ -3,9 +3,10 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor, act } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createRef, useState } from 'react'
+import { createRef, useEffect, useState } from 'react'
 import { CSSTransition, TransitionGroup } from 'react-transition-group'
 import {
+  NavLink,
   RouterProvider,
   createMemoryRouter,
   useLocation,
@@ -13,7 +14,7 @@ import {
   type RouteObject,
 } from 'react-router-dom'
 
-import { AnimatedOutlet } from '../index'
+import { AnimatedOutlet, useActivated, useDeactivated } from '../index'
 
 afterEach(() => cleanup())
 
@@ -121,6 +122,108 @@ describe('AnimatedOutlet integration', () => {
     fireEvent.click(screen.getByTestId('tab-b'))
     expect(document.querySelectorAll('.fr-animating').length).toBe(0)
     expect(document.querySelectorAll('.animated-outlet-page').length).toBe(countBefore)
+  })
+
+  it('tabs + NavLink 重复点击当前 Tab 不 remount 子页面', async () => {
+    let instances = 0
+
+    function TabPage() {
+      const [instanceId] = useState(() => ++instances)
+      return <div data-testid="tab-page">{instanceId}</div>
+    }
+
+    function TabsLayout() {
+      return (
+        <>
+          <nav>
+            <NavLink to="/tabs/a" replace data-testid="nav-a">
+              A
+            </NavLink>
+            <NavLink to="/tabs/b" replace data-testid="nav-b">
+              B
+            </NavLink>
+          </nav>
+          <AnimatedOutlet tabs />
+        </>
+      )
+    }
+
+    const tabRoutes: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          {
+            path: '/tabs',
+            element: <TabsLayout />,
+            children: [
+              { path: 'a', element: <TabPage /> },
+              { path: 'b', element: <TabPage /> },
+            ],
+          },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(tabRoutes, { initialEntries: ['/tabs/a'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('tab-page').textContent).toBe('1'))
+
+    for (let i = 0; i < 15; i++) {
+      fireEvent.click(screen.getByTestId('nav-a'))
+    }
+
+    expect(screen.getByTestId('tab-page').textContent).toBe('1')
+    expect(instances).toBe(1)
+    expect(document.querySelectorAll('.fr-animating').length).toBe(0)
+  })
+
+  it('tabs 同路径 navigate（新 location.key）不 remount 子页面', async () => {
+    let instances = 0
+
+    function TabPage() {
+      const [instanceId] = useState(() => ++instances)
+      return <div data-testid="tab-page">{instanceId}</div>
+    }
+
+    function TabsLayout() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <button
+            type="button"
+            data-testid="repeat-a"
+            onClick={() => navigate('/tabs/a', { replace: true })}
+          >
+            repeat
+          </button>
+          <AnimatedOutlet tabs />
+        </>
+      )
+    }
+
+    const tabRoutes: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          {
+            path: '/tabs',
+            element: <TabsLayout />,
+            children: [{ path: 'a', element: <TabPage /> }],
+          },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(tabRoutes, { initialEntries: ['/tabs/a'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('tab-page').textContent).toBe('1'))
+
+    for (let i = 0; i < 15; i++) {
+      fireEvent.click(screen.getByTestId('repeat-a'))
+    }
+
+    expect(screen.getByTestId('tab-page').textContent).toBe('1')
+    expect(instances).toBe(1)
   })
 })
 
@@ -316,5 +419,561 @@ describe('state.transition integration', () => {
     const classes = [...document.querySelectorAll('.animated-outlet-page')].map((e) => e.className)
     expect(classes.join(' ')).toMatch(/fade-leave/)
     expect(classes.join(' ')).not.toMatch(/slide-next-leave/)
+  })
+})
+
+describe('AnimatedOutlet keepAlive tabs', () => {
+  it('切换 Tab 后原 Tab 组件不被卸载（保持 mounted）', async () => {
+    let mountCount = 0
+
+    function TabA() {
+      useEffect(() => { mountCount++ }, [])
+      return <div data-testid="tab-a">A</div>
+    }
+
+    function TabsLayout() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <button type="button" data-testid="go-b" onClick={() => navigate('/ka/b', { replace: true })}>B</button>
+          <AnimatedOutlet tabs keepAlive />
+        </>
+      )
+    }
+
+    const r: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          {
+            path: '/ka',
+            element: <TabsLayout />,
+            children: [
+              { path: 'a', element: <TabA /> },
+              { path: 'b', element: <div data-testid="tab-b">B</div> },
+            ],
+          },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(r, { initialEntries: ['/ka/a'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('tab-a')).toBeTruthy())
+    expect(mountCount).toBe(1)
+
+    fireEvent.click(screen.getByTestId('go-b'))
+    await waitFor(() => expect(screen.getByTestId('tab-b')).toBeTruthy())
+
+    // Tab A 仍然 mounted（keepAlive），不应再次 mount
+    expect(mountCount).toBe(1)
+    // Tab A 在 DOM 中但不可见
+    expect(document.querySelector('[data-testid="tab-a"]')).toBeTruthy()
+  })
+
+  it('切换回原 Tab 后 state 立即恢复，Effects 按 Activity 语义重新执行', async () => {
+    let mountCount = 0
+
+    function TabA() {
+      useEffect(() => { mountCount++ }, [])
+      const [count, setCount] = useState(0)
+      return (
+        <div>
+          <span data-testid="counter">{count}</span>
+          <button type="button" data-testid="inc" onClick={() => setCount((c) => c + 1)}>+</button>
+        </div>
+      )
+    }
+
+    function TabsLayout() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <button type="button" data-testid="go-b" onClick={() => navigate('/ka2/b', { replace: true })}>B</button>
+          <button type="button" data-testid="go-a" onClick={() => navigate('/ka2/a', { replace: true })}>A</button>
+          <AnimatedOutlet tabs keepAlive />
+        </>
+      )
+    }
+
+    const r: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          {
+            path: '/ka2',
+            element: <TabsLayout />,
+            children: [
+              { path: 'a', element: <TabA /> },
+              { path: 'b', element: <div data-testid="tab-b">B</div> },
+            ],
+          },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(r, { initialEntries: ['/ka2/a'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('counter')).toBeTruthy())
+
+    // 在 Tab A 累加计数
+    fireEvent.click(screen.getByTestId('inc'))
+    fireEvent.click(screen.getByTestId('inc'))
+    expect(screen.getByTestId('counter').textContent).toBe('2')
+
+    // 切到 Tab B
+    fireEvent.click(screen.getByTestId('go-b'))
+    await waitFor(() => expect(screen.getByTestId('tab-b')).toBeTruthy())
+
+    // 切回 Tab A
+    fireEvent.click(screen.getByTestId('go-a'))
+    await waitFor(() => expect(screen.getByTestId('counter')).toBeTruthy())
+
+    // useState 的状态（计数 2）完整保留 ✅
+    expect(screen.getByTestId('counter').textContent).toBe('2')
+    // Activity 语义：隐藏时清理 Effects，重新可见时重新执行 Effects（与 CSS display:none 不同）
+    // Vue keepAlive 会"暂停" Effects；React Activity 会"清理+重建" Effects，更安全（无泄漏）
+    expect(mountCount).toBe(2)
+  })
+})
+
+describe('useActivated / useDeactivated hooks', () => {
+  it('useActivated 在每次 tab 激活时触发（含初次 mount）', async () => {
+    const calls: string[] = []
+
+    function TabA() {
+      useActivated(() => { calls.push('activated') })
+      return <div data-testid="tab-a">A</div>
+    }
+
+    function TabsLayout() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <button type="button" data-testid="go-a" onClick={() => navigate('/act/a', { replace: true })}>A</button>
+          <button type="button" data-testid="go-b" onClick={() => navigate('/act/b', { replace: true })}>B</button>
+          <AnimatedOutlet tabs keepAlive />
+        </>
+      )
+    }
+
+    const r: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          {
+            path: '/act',
+            element: <TabsLayout />,
+            children: [
+              { path: 'a', element: <TabA /> },
+              { path: 'b', element: <div data-testid="tab-b">B</div> },
+            ],
+          },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(r, { initialEntries: ['/act/a'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('tab-a')).toBeTruthy())
+
+    // Initial activation: 1 call
+    expect(calls.length).toBe(1)
+
+    // Switch to B (tab A deactivates)
+    fireEvent.click(screen.getByTestId('go-b'))
+    await waitFor(() => expect(screen.getByTestId('tab-b')).toBeTruthy())
+    expect(calls.length).toBe(1)
+
+    // Switch back to A (tab A activates again: 2nd call)
+    fireEvent.click(screen.getByTestId('go-a'))
+    await waitFor(() => expect(screen.getByTestId('tab-a')).toBeTruthy())
+    expect(calls.length).toBe(2)
+  })
+
+  it('useActivated 在非 keepAlive 环境等同 useEffect mount', async () => {
+    const calls: string[] = []
+
+    function Page() {
+      useActivated(() => { calls.push('activated') })
+      return <div data-testid="page">page</div>
+    }
+
+    const r: RouteObject[] = [{ path: '/', element: <AnimatedOutlet />, children: [{ index: true, element: <Page /> }] }]
+    const router = createMemoryRouter(r, { initialEntries: ['/'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('page')).toBeTruthy())
+    expect(calls.length).toBe(1)
+  })
+
+  it('useDeactivated 在 keepAlive tab 切走时触发', async () => {
+    const calls: string[] = []
+
+    function TabA() {
+      useDeactivated(() => { calls.push('deactivated') })
+      return <div data-testid="tab-a">A</div>
+    }
+
+    function TabsLayout() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <button type="button" data-testid="go-a" onClick={() => navigate('/deact/a', { replace: true })}>A</button>
+          <button type="button" data-testid="go-b" onClick={() => navigate('/deact/b', { replace: true })}>B</button>
+          <AnimatedOutlet tabs keepAlive />
+        </>
+      )
+    }
+
+    const r: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          {
+            path: '/deact',
+            element: <TabsLayout />,
+            children: [
+              { path: 'a', element: <TabA /> },
+              { path: 'b', element: <div data-testid="tab-b">B</div> },
+            ],
+          },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(r, { initialEntries: ['/deact/a'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('tab-a')).toBeTruthy())
+
+    // Not yet deactivated
+    expect(calls.length).toBe(0)
+
+    // Switch to B → tab A deactivated
+    fireEvent.click(screen.getByTestId('go-b'))
+    await waitFor(() => expect(screen.getByTestId('tab-b')).toBeTruthy())
+    expect(calls.length).toBe(1)
+
+    // Switch back to A → no extra deactivation
+    fireEvent.click(screen.getByTestId('go-a'))
+    await waitFor(() => expect(screen.getByTestId('tab-a')).toBeTruthy())
+    expect(calls.length).toBe(1)
+
+    // Switch to B again → deactivated again
+    fireEvent.click(screen.getByTestId('go-b'))
+    await waitFor(() => expect(screen.getByTestId('tab-b')).toBeTruthy())
+    expect(calls.length).toBe(2)
+  })
+
+  it('useDeactivated 在 keepAlive 活跃页离开整组时触发（keepAlive 组卸载）', async () => {
+    const calls: string[] = []
+
+    function TabA() {
+      useDeactivated(() => { calls.push('deactivated') })
+      return <div data-testid="tab-a">A</div>
+    }
+
+    function TabsLayout() {
+      return <AnimatedOutlet tabs keepAlive />
+    }
+
+    function Root() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <button type="button" data-testid="go-outside" onClick={() => navigate('/ka-unmount/outside')}>outside</button>
+          <AnimatedOutlet />
+        </>
+      )
+    }
+
+    const r: RouteObject[] = [
+      {
+        path: '/ka-unmount',
+        element: <Root />,
+        children: [
+          {
+            element: <TabsLayout />,
+            children: [
+              { path: 'a', element: <TabA /> },
+            ],
+          },
+          { path: 'outside', element: <div data-testid="outside">outside</div> },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(r, { initialEntries: ['/ka-unmount/a'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('tab-a')).toBeTruthy())
+    expect(calls.length).toBe(0)
+
+    // Navigate outside the keepAlive group → group unmounts → deactivated fires via microtask
+    fireEvent.click(screen.getByTestId('go-outside'))
+    await waitFor(() => expect(screen.getByTestId('outside')).toBeTruthy())
+    await waitFor(() => expect(calls.length).toBe(1), { timeout: 2000 })
+  })
+
+  it('useDeactivated 在 keepAlive 活跃页 StrictMode 刷新时不触发', async () => {
+    const { StrictMode } = await import('react')
+    const calls: string[] = []
+
+    function TabA() {
+      useDeactivated(() => { calls.push('deactivated') })
+      return <div data-testid="tab-a-strict">A</div>
+    }
+
+    const r: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          {
+            path: '/strict-deact',
+            element: <AnimatedOutlet tabs keepAlive />,
+            children: [{ path: 'a', element: <TabA /> }],
+          },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(r, { initialEntries: ['/strict-deact/a'] })
+    render(
+      <StrictMode>
+        <RouterProvider router={router} />
+      </StrictMode>
+    )
+    await waitFor(() => expect(screen.getByTestId('tab-a-strict')).toBeTruthy())
+
+    // Allow microtasks to flush
+    await new Promise((r) => setTimeout(r, 50))
+
+    // StrictMode double-invoke must NOT trigger useDeactivated
+    expect(calls.length).toBe(0)
+  })
+
+  it('useDeactivated 在非 keepAlive 环境等同 useEffect cleanup（unmount 时触发）', async () => {
+    const calls: string[] = []
+
+    function PageA() {
+      useDeactivated(() => { calls.push('deactivated') })
+      return <div data-testid="page-a">A</div>
+    }
+
+    function Nav() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <button type="button" data-testid="go-a" onClick={() => navigate('/dna/a')}>A</button>
+          <button type="button" data-testid="go-b" onClick={() => navigate('/dna/b')}>B</button>
+          <AnimatedOutlet />
+        </>
+      )
+    }
+
+    const r: RouteObject[] = [
+      {
+        path: '/dna',
+        element: <Nav />,
+        children: [
+          { path: 'a', element: <PageA /> },
+          { path: 'b', element: <div data-testid="page-b">B</div> },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(r, { initialEntries: ['/dna/a'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('page-a')).toBeTruthy())
+
+    // Not yet deactivated
+    expect(calls.length).toBe(0)
+
+    // Navigate to B → Page A unmounts → deactivated fires
+    fireEvent.click(screen.getByTestId('go-b'))
+    await waitFor(() => expect(screen.getByTestId('page-b')).toBeTruthy())
+    await waitFor(() => expect(calls.length).toBe(1))
+  })
+})
+
+
+describe('Bug 1 regression: PageScope/LayoutScopeRegistrar side effects in useLayoutEffect', () => {
+  it('PageScope transition prop 更新后注册随之更新', async () => {
+    function Parent() {
+      const [anim, setAnim] = useState<'fade' | 'scale'>('fade')
+      return (
+        <>
+          <button type="button" data-testid="toggle" onClick={() => setAnim('scale')}>
+            toggle
+          </button>
+          <AnimatedOutlet transition={anim}>
+            <div data-testid="child">child</div>
+          </AnimatedOutlet>
+        </>
+      )
+    }
+
+    const r: RouteObject[] = [{ path: '/', element: <Parent /> }]
+    const router = createMemoryRouter(r, { initialEntries: ['/'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('child')).toBeTruthy())
+
+    fireEvent.click(screen.getByTestId('toggle'))
+    // No error expected; component stays rendered with updated transition
+    expect(screen.getByTestId('child')).toBeTruthy()
+  })
+
+  it('LayoutScopeRegistrar transition prop 更新不报错', async () => {
+    function Layout({ anim }: { anim: string }) {
+      return <AnimatedOutlet transition={anim as never} />
+    }
+
+    function Parent() {
+      const [anim, setAnim] = useState('fade')
+      return (
+        <>
+          <button type="button" data-testid="toggle" onClick={() => setAnim('slide')}>
+            toggle
+          </button>
+          <Layout anim={anim} />
+        </>
+      )
+    }
+
+    const r: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          {
+            path: '/',
+            element: <Parent />,
+            children: [{ index: true, element: <div data-testid="inner">inner</div> }],
+          },
+        ],
+      },
+    ]
+    const router = createMemoryRouter(r, { initialEntries: ['/'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('inner')).toBeTruthy())
+
+    fireEvent.click(screen.getByTestId('toggle'))
+    expect(screen.getByTestId('inner')).toBeTruthy()
+  })
+})
+
+describe('Bug 2 regression: commitSettled 不被双重调用', () => {
+  it('动画完成后 settled 只触发一次 re-render，不会产生多余 page 节点', async () => {
+    function NavButton() {
+      const navigate = useNavigate()
+      return (
+        <button type="button" onClick={() => navigate('/b')}>
+          go
+        </button>
+      )
+    }
+
+    const r: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          { path: '/', element: <NavButton /> },
+          { path: '/b', element: <div data-testid="page-b">B</div> },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(r, { initialEntries: ['/'] })
+    render(<RouterProvider router={router} />)
+    fireEvent.click(screen.getByRole('button', { name: 'go' }))
+
+    // During animation: 2 pages visible
+    expect(document.querySelectorAll('.animated-outlet-page').length).toBe(2)
+
+    // After animation completes: only 1 page (unmountOnExit)
+    await waitFor(
+      () => expect(document.querySelectorAll('.animated-outlet-page').length).toBe(1),
+      { timeout: 1000 },
+    )
+    // No extra pages leaked from double commitSettled
+    expect(document.querySelectorAll('.animated-outlet-page').length).toBe(1)
+  })
+})
+
+describe('Bug 3 regression: useMemo 在过渡期间不会因 fromSnap.matches 无效化', () => {
+  it('连续导航时动画 classNames 在整个过渡期间保持稳定', async () => {
+    function NavButton() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <button type="button" data-testid="go-b" onClick={() => navigate('/stable/b')}>
+            go b
+          </button>
+        </>
+      )
+    }
+
+    const r: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          { path: '/stable/a', element: <NavButton /> },
+          { path: '/stable/b', element: <div data-testid="page-b">B</div> },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(r, { initialEntries: ['/stable/a'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('go-b')).toBeTruthy())
+
+    fireEvent.click(screen.getByTestId('go-b'))
+
+    // During animation: exactly 2 pages, animation classes should be present
+    const pages = document.querySelectorAll('.animated-outlet-page')
+    expect(pages.length).toBe(2)
+    const allClasses = [...pages].map((e) => e.className).join(' ')
+    expect(allClasses).toMatch(/fr-animating|slide-next-enter|slide-prev-leave/)
+
+    // After animation: exactly 1 page, no animation classes remain
+    await waitFor(
+      () => expect(document.querySelectorAll('.animated-outlet-page').length).toBe(1),
+      { timeout: 1000 },
+    )
+    const remainingClasses = document.querySelector('.animated-outlet-page')?.className ?? ''
+    expect(remainingClasses).not.toMatch(/fr-animating/)
+  })
+
+  it('快速连续导航后最终只剩 1 个页面节点', async () => {
+    function NavButtons() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <button type="button" data-testid="go-b" onClick={() => navigate('/seq/b')}>b</button>
+          <button type="button" data-testid="go-a" onClick={() => navigate('/seq/a')}>a</button>
+        </>
+      )
+    }
+
+    const r: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          { path: '/seq/a', element: <NavButtons /> },
+          { path: '/seq/b', element: <NavButtons /> },
+        ],
+      },
+    ]
+
+    const router = createMemoryRouter(r, { initialEntries: ['/seq/a'] })
+    render(<RouterProvider router={router} />)
+    await waitFor(() => expect(screen.getByTestId('go-b')).toBeTruthy())
+
+    fireEvent.click(screen.getByTestId('go-b'))
+    await waitFor(() => expect(screen.getByTestId('go-a')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('go-a'))
+
+    await waitFor(
+      () => expect(document.querySelectorAll('.animated-outlet-page').length).toBe(1),
+      { timeout: 1500 },
+    )
+    expect(document.querySelector('.animated-outlet-page')?.className).not.toContain('fr-animating')
   })
 })

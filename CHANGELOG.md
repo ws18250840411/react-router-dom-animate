@@ -5,11 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] — 2026-06-30
+## [Unreleased] — 2026-07-01
+
+### Breaking / Behavioral Changes
+
+- **`keepAlive` 底层由 CSS `visibility` 方案升级为 React 19.2 官方 `<Activity>` 原语**。
+  - `<Activity mode="hidden">` 会清理 Effect，页面再次激活时重新执行 Effect（与 Vue `keepAlive` 的差异：Vue 暂停 Effect；React Activity 清理并重跑）。
+  - `useActivated` / `useDeactivated` 的语义随之调整：前者在 **每次激活（含首次 mount）** 时触发，后者在 **页面隐藏时** 触发（等同于 Effect 清理）。
+  - 组件**状态（useState）、DOM（含 scrollTop）** 仍完整保留，不受 Effect 清理影响。
 
 ### New Features
 
-#### `keepAlive` — 通用页面常驻内存
+#### `keepAlive` — 基于 React 19 `<Activity>` 的页面常驻
 
 ```tsx
 <AnimatedOutlet keepAlive />                          // 任意 stack 路由
@@ -19,6 +26,54 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - 所有曾访问的页面保持在 DOM，切换时不触发 remount，组件状态、滚动位置、已加载数据完整保留。
 - 不再限制"仅 tabs 模式有效"，可与任意 `transition` / `mode` / `tabs` 组合使用。
+
+#### `max` — LRU 内存上限
+
+```tsx
+<AnimatedOutlet keepAlive max={10} />  // 最多缓存 10 个页面，超出按 LRU 淘汰
+```
+
+默认不限制（`max` 不传）；建议 Tabs 类应用传 `max={20}` 防止内存增长过快。
+
+#### `aliveRef` — 命令式缓存控制 API
+
+```tsx
+import { useRef } from 'react'
+import type { KeepAliveRef } from 'react-router-dom-animate'
+import { AnimatedOutlet } from 'react-router-dom-animate'
+
+function Layout() {
+  const aliveRef = useRef<KeepAliveRef | undefined>(undefined)
+  return (
+    <>
+      <button onClick={() => aliveRef.current?.remove('/some/path')}>清除指定页</button>
+      <button onClick={() => aliveRef.current?.removeAll()}>清除所有（当前页除外）</button>
+      <AnimatedOutlet keepAlive aliveRef={aliveRef} />
+    </>
+  )
+}
+```
+
+| 方法 | 说明 |
+|------|------|
+| `remove(pathname)` | 移除指定 pathname 的缓存，下次访问重新 mount |
+| `removeAll()` | 移除所有非当前活跃页的缓存 |
+| `getCached()` | 获取当前缓存的所有 pathname 列表 |
+
+#### Route Handle 自动读取 `keepAlive` 配置
+
+在路由 `handle` 中声明 `keepAlive: true`，无需对 `AnimatedOutlet` 传 prop：
+
+```ts
+// vite-plugin-file-router / 手写路由均适用
+{
+  path: 'tabs',
+  handle: { keepAlive: true, transition: 'fade', tabs: true },
+  element: <TabsLayout />,
+}
+```
+
+`AnimatedOutlet` 自动从 `useMatches()` 读取最近祖先路由的 `handle.keepAlive`（prop 优先于 handle）。
 
 #### `useActivated` / `useDeactivated` — 页面进入与离开的生命周期 hooks
 

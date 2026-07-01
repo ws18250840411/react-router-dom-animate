@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import type { RouteAnimType } from 'react-router-dom-animate'
 
+
 type Scenario = {
   key: string
   label: string
@@ -111,6 +112,17 @@ export function Home() {
       <p className="hint">
         Tabs 用 tabs + fade/slide（slide 含 A/B/C 三 Tab）；滑块示例为 none + CSS 指示器；Catalog 演示列表→详情 stack。
       </p>
+
+      <section className="matrix-section" data-testid="matrix-keep-alive">
+        <h2 className="matrix-section-title">KeepAlive（React 19 Activity）</h2>
+        <p className="hint" style={{ marginBottom: 8 }}>
+          切换 Tab 后页面状态（计数器、输入框、滚动位置）完整保留，基于 React 19.2{' '}
+          <code>&lt;Activity&gt;</code> 实现。
+        </p>
+        <Link to="/keep-alive" className="tab" data-testid="link-keep-alive">
+          打开 KeepAlive Demo →
+        </Link>
+      </section>
     </div>
   )
 }

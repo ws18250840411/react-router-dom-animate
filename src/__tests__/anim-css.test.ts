@@ -32,4 +32,27 @@ describe('anim.css 时长与缓动', () => {
     expect(CSS).toContain('--fr-modal-overlay')
     expect(CSS).toContain('.fr-modal.fr-animating.slide-up-leave')
   })
+
+  it('will-change 同时包含 transform 和 opacity（覆盖 fade/scale 动画）', () => {
+    expect(CSS).toContain('will-change: transform, opacity')
+  })
+
+  it('scale 和 modal-bg 动画使用 translate3d 触发 GPU 合成层', () => {
+    expect(CSS).toMatch(/fr-scale-enter[\s\S]*?translate3d\(0, 0, 0\)/)
+    expect(CSS).toMatch(/fr-scale-leave[\s\S]*?translate3d\(0, 0, 0\)/)
+    expect(CSS).toMatch(/fr-modal-bg-leave[\s\S]*?translate3d\(0, 0, 0\)/)
+  })
+
+  it('modal-bg-enter 已移除（死代码）', () => {
+    expect(CSS).not.toContain('modal-bg-enter')
+    expect(CSS).not.toContain('fr-modal-bg-enter')
+  })
+
+  it('slide-prev-enter-slide class 与其 keyframes 相邻定义', () => {
+    const classIdx = CSS.indexOf('.animated-outlet-page.slide-prev-enter-slide')
+    const keyframeIdx = CSS.indexOf('@keyframes fr-slide-prev-enter-slide')
+    // keyframe should be within 500 characters of the class declaration
+    expect(keyframeIdx - classIdx).toBeLessThan(500)
+    expect(keyframeIdx - classIdx).toBeGreaterThan(0)
+  })
 })

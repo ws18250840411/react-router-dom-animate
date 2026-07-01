@@ -90,6 +90,34 @@ test.describe('压测 — Tabs 狂点', () => {
     expect(errors).toEqual([])
   })
 
+  test('wrap NavLink 重复点击当前 Tab 不增加 render 计数', async ({ page }) => {
+    await page.goto('/wrap/tabs/b')
+    await page.waitForTimeout(SETTLE_MS)
+
+    const renderBefore = await page.getByTestId('tab-b-page').getAttribute('data-render-count')
+    const historyBefore = await page.evaluate(() => history.length)
+
+    const tabB = page.getByTestId('tab-link-b').last()
+    for (let i = 0; i < 30; i++) {
+      await tabB.click({ force: true })
+      await page.waitForTimeout(30)
+    }
+
+    await page.waitForTimeout(SETTLE_MS)
+
+    const renderAfter = await page.getByTestId('tab-b-page').getAttribute('data-render-count')
+    const historyAfter = await page.evaluate(() => history.length)
+    const instanceId = await page.getByTestId('tab-b-page').getAttribute('data-render-count')
+
+    expect(historyAfter).toBe(historyBefore)
+    expect(await page.locator('.fr-animating').count()).toBe(0)
+    await expect(page).toHaveURL('/wrap/tabs/b')
+
+    const renderDelta = Number(renderAfter) - Number(renderBefore)
+    expect(renderDelta).toBeLessThanOrEqual(5)
+    expect(instanceId).toBeTruthy()
+  })
+
   test('push tabs 同一 Tab 连点 40 次', async ({ page }) => {
     const errors = trackErrors(page)
     await page.goto('/')

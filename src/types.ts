@@ -32,6 +32,8 @@ export interface AnimPreset {
   type: RouteAnimType
   forward: ClassNames
   back: ClassNames
+  /** Override the default --fr-duration for this specific animation type. */
+  durationMs?: number
 }
 
 export interface AnimPresetRegistry {
@@ -39,4 +41,27 @@ export interface AnimPresetRegistry {
   get: (type: RouteAnimType) => AnimPreset | undefined
   has: (type: RouteAnimType) => boolean
   types: () => RouteAnimType[]
+}
+
+/**
+ * Imperative handle returned by `aliveRef` on `<AnimatedOutlet keepAlive>`.
+ * Allows programmatic control over the keepAlive page cache.
+ */
+export interface KeepAliveRef {
+  /**
+   * Remove a specific pathname from the cache.
+   * The next navigation to that pathname will remount it from scratch.
+   * Has no effect if `pathname` is the currently-active page.
+   */
+  remove: (pathname: string) => void
+  /**
+   * Remove all inactive (hidden) pages from the cache.
+   * The currently-active page is unaffected.
+   */
+  removeAll: () => void
+  /**
+   * Return the list of currently-cached pathnames in LRU order
+   * (tail = most recently used).
+   */
+  getCached: () => string[]
 }

@@ -62,6 +62,18 @@
   overflow: hidden;
 }
 
+/* Background-preserved pages (keepBackground mode).
+   Applied to all entries in the back-stack that are not the top two pages.
+   They stay mounted in the DOM to preserve scroll state and component state,
+   but are invisible and non-interactive until popped back to the foreground. */
+.animated-outlet-page.fr-bg-hidden {
+  visibility: hidden;
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
 /* prefers-reduced-motion: override */
 /* Respect the user's system-level "reduce motion" preference.
    When enabled, all page transitions become instant cuts instead of animations. */

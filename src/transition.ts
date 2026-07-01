@@ -19,14 +19,67 @@ const DEFAULT_ANIM: RouteAnimType = 'cover'
 const BASE = 'fr-animating fr-anim'
 
 let durationMs = 300
+let durationCached = false
+const typedDurationCache = new Map<string, number>()
 
+function parseCssMs(raw: string): number | undefined {
+  if (!raw) return undefined
+  if (raw.endsWith('ms')) return Number.parseInt(raw, 10) || undefined
+  if (raw.endsWith('s')) return Math.round(Number.parseFloat(raw) * 1000) || undefined
+  return undefined
+}
+
+/**
+ * Read --fr-duration from the document root's computed style.
+ * Only caches the result when a non-empty value is found, so that external
+ * stylesheets loaded after the JS bundle are still picked up on the first
+ * navigation (no manual `warmDurationMs()` call required).
+ */
 function readDurationMs(): number {
-  if (typeof document === 'undefined') return durationMs
+  if (durationCached || typeof document === 'undefined') return durationMs
   const raw = getComputedStyle(document.documentElement).getPropertyValue('--fr-duration').trim()
-  if (!raw) return durationMs
-  if (raw.endsWith('ms')) durationMs = Number.parseInt(raw, 10) || 300
-  else if (raw.endsWith('s')) durationMs = Math.round(Number.parseFloat(raw) * 1000) || 300
+  const parsed = parseCssMs(raw)
+  if (parsed !== undefined) {
+    durationMs = parsed
+    durationCached = true
+  }
   return durationMs
+}
+
+/**
+ * Read --fr-duration-{type} for a specific animation type, falling back to
+ * --fr-duration if the per-type variable is not set.
+ *
+ * Values are cached only once a non-empty CSS variable is found, so external
+ * stylesheets loaded after the JS bundle are still picked up.
+ *
+ * Example:
+ *   --fr-duration: 300ms;
+ *   --fr-duration-modal: 450ms;
+ */
+function readTypedDurationMs(type: RouteAnimType): number {
+  if (typeof document === 'undefined') return readDurationMs()
+  if (typedDurationCache.has(type)) return typedDurationCache.get(type)!
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(`--fr-duration-${type}`).trim()
+  const parsed = parseCssMs(raw)
+  if (parsed !== undefined) {
+    typedDurationCache.set(type, parsed)
+    return parsed
+  }
+  return readDurationMs()
+}
+
+/**
+ * Eagerly reads and caches --fr-duration and per-type CSS variables.
+ * Call this once after all stylesheets have loaded if you use external CSS
+ * `<link>` files and want to avoid a `getComputedStyle` call on the first
+ * navigation. In most bundler setups (Vite, webpack) this is unnecessary.
+ */
+export function warmDurationMs(): void {
+  readDurationMs()
+  for (const type of ['cover', 'slide', 'fade', 'scale', 'modal', 'none'] as RouteAnimType[]) {
+    readTypedDurationMs(type)
+  }
 }
 
 const presets = new Map<RouteAnimType, AnimPreset>()
@@ -48,6 +101,25 @@ export const animPresetRegistry: AnimPresetRegistry = {
 
 export function registerAnimPreset(preset: AnimPreset): void {
   animPresetRegistry.register(preset)
+}
+
+/**
+ * Override the animation duration for a specific type without replacing its
+ * CSS class names. Useful for tuning built-in presets in JS.
+ *
+ * This is the JS equivalent of `--fr-duration-{type}` CSS variables and takes
+ * priority over them. Prefer CSS variables when possible.
+ *
+ * @example
+ *   setAnimDuration('modal', 450)
+ *   setAnimDuration('slide', 250)
+ */
+export function setAnimDuration(type: RouteAnimType, ms: number): void {
+  // Update the preset entry if it was registered via registerAnimPreset
+  const existing = presets.get(type)
+  if (existing) presets.set(type, { ...existing, durationMs: ms })
+  // Always update the typed cache so non-preset types are also covered
+  typedDurationCache.set(type, ms)
 }
 
 function parseRouteAnim(value: unknown): RouteAnimType | undefined {
@@ -156,7 +228,7 @@ for (const preset of [
   { type: 'slide', forward: SLIDE_FORWARD, back: SLIDE_BACK },
   { type: 'fade', forward: FADE_FORWARD, back: FADE_BACK },
   { type: 'scale', forward: SCALE_FORWARD, back: SCALE_BACK },
-  { type: 'modal', forward: COVER_FORWARD, back: COVER_BACK },
+  { type: 'modal', forward: MODAL_PUSH, back: MODAL_POP },
 ] satisfies AnimPreset[]) {
   registerAnimPreset(preset)
 }
@@ -167,8 +239,9 @@ function presetOf(type: RouteAnimType): AnimPreset {
 
 export function classNamesFor(nav: NavType | string, fromType: RouteAnimType, toType: RouteAnimType): ClassNames {
   if (nav === 'REPLACE') {
-    if (toType !== 'cover' && toType !== 'slide' && toType !== 'fade') return NONE
-    return presetOf(toType).forward
+    if (toType === 'modal' || toType === 'none') return NONE
+    const forward = presetOf(toType).forward
+    return isAnimated(forward) ? forward : NONE
   }
 
   if (toType === 'none' || (fromType === 'none' && nav === 'POP')) return NONE
@@ -185,6 +258,11 @@ function isAnimated(classNames: ClassNames): boolean {
   return Boolean(classNames.enterActive || classNames.exitActive)
 }
 
+/**
+ * Module-level singletons for page/layout animation overrides.
+ * SSR: these maps are emptied after each render (mount registers, unmount cleans up),
+ * so a full SSR pass leaves them empty — safe for most setups.
+ */
 const pageAnims = new Map<string, RouteAnimType>()
 const layoutScopes = new Map<string, RouteAnimType>()
 
@@ -225,26 +303,37 @@ export function layoutRouteId(matches: UIMatch[], pathname: string): string | un
   const leafActive =
     leafPath === curPath || (leafPath !== '/' && curPath.startsWith(`${leafPath}/`))
 
+  // leafPath may be a relative segment (e.g. 'a') when the leaf route is defined with a relative
+  // path inside a nested layout. In that case the parent layout's id is the correct scope id.
   if (!leafActive && matches.length >= 3 && !leafPath.startsWith('/')) {
     return matches[matches.length - 2]?.id
   }
 
-  if (leafActive && matches.length >= 3) return matches[matches.length - 2]?.id
+  // When the leaf route path doesn't match the current pathname, the matches
+  // come from a different route (e.g. useMatches() returns the live global
+  // state while useLocation().pathname is frozen inside a keepBackground entry).
+  // Returning undefined here lets pageTransitionKey fall back to locationKey,
+  // which is stable for the frozen entry and prevents TransitionGroup from
+  // re-keying its child and destroying the kept-alive DOM.
+  if (!leafActive) return undefined
+
+  if (matches.length >= 3) return matches[matches.length - 2]?.id
   return matches[matches.length - 1]?.id
+}
+
+function pathDepth(path: string): number {
+  const n = normalizePath(path)
+  return n === '/' ? 0 : n.split('/').filter(Boolean).length
 }
 
 export function sameLayoutPage(from: RouteSnapshot, to: RouteSnapshot): boolean {
   const fromId = layoutRouteId(from.matches as UIMatch[], from.path)
   const toId = layoutRouteId(to.matches as UIMatch[], to.path)
   if (fromId === undefined || fromId !== toId) return false
-  const depth = (path: string) => {
-    const n = normalizePath(path)
-    return n === '/' ? 0 : n.split('/').filter(Boolean).length
-  }
-  return depth(from.path) === depth(to.path)
+  return pathDepth(from.path) === pathDepth(to.path)
 }
 
-const IDLE: TransitionPlan = {
+export const IDLE: TransitionPlan = {
   classNames: { enter: '', enterActive: '', exit: '', exitActive: '' },
   duration: 0,
 }
@@ -309,7 +398,7 @@ export function resolveTabs(
   return false
 }
 
-function tabIndexFromSnapshot(snap: RouteSnapshot): number {
+function tabIndexFromSnapshot(snap: RouteSnapshot): number | undefined {
   if (snap.state && typeof snap.state === 'object') {
     const idx = (snap.state as Record<string, unknown>)[TAB_INDEX_KEY]
     if (typeof idx === 'number') return idx
@@ -318,8 +407,7 @@ function tabIndexFromSnapshot(snap: RouteSnapshot): number {
     const idx = (snap.matches[i]?.handle as { tabIndex?: unknown } | undefined)?.tabIndex
     if (typeof idx === 'number') return idx
   }
-  const leaf = normalizePath(snap.path).split('/').pop() ?? snap.path
-  return leaf.charCodeAt(0)
+  return undefined
 }
 
 function classNamesForTabs(from: RouteSnapshot, to: RouteSnapshot, fallback: RouteAnimType): ClassNames {
@@ -327,7 +415,10 @@ function classNamesForTabs(from: RouteSnapshot, to: RouteSnapshot, fallback: Rou
   if (anim === 'slide') {
     const fromIdx = tabIndexFromSnapshot(from)
     const toIdx = tabIndexFromSnapshot(to)
-    return toIdx > fromIdx ? TAB_SLIDE_FORWARD : TAB_SLIDE_BACK
+    if (fromIdx !== undefined && toIdx !== undefined) {
+      return toIdx > fromIdx ? TAB_SLIDE_FORWARD : TAB_SLIDE_BACK
+    }
+    return FADE_FORWARD
   }
   if (anim === 'fade') return FADE_FORWARD
   return classNamesFor('REPLACE', resolveAnim(from, fallback), anim)
@@ -360,5 +451,8 @@ export function planTransition(
 
   if (!isAnimated(classNames)) return IDLE
 
-  return { classNames, duration: readDurationMs() }
+  const activeType = options?.tabs ? toType : nav === 'POP' ? fromType : toType
+  const duration = animPresetRegistry.get(activeType)?.durationMs ?? readTypedDurationMs(activeType)
+
+  return { classNames, duration }
 }

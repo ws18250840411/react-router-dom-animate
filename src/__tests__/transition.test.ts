@@ -205,6 +205,15 @@ describe('planTransition', () => {
     expect(classNames.exitActive).toBe('fade-leave')
   })
 
+  it('tabs + none 同 pathname 不同 key 返回 IDLE', () => {
+    const plan = planTransition('REPLACE', snap('/tabs/a', 'k1'), snap('/tabs/a', 'k2'), 'none', {
+      tabs: true,
+    })
+    expect(plan.duration).toBe(0)
+    expect(plan.classNames.enterActive).toBe('')
+    expect(plan.classNames.exitActive).toBe('')
+  })
+
   it('同 pathname 重复导航返回 IDLE', () => {
     const plan = planTransition('REPLACE', snap('/tabs/a', 'k1'), snap('/tabs/a', 'k2'), 'fade')
     expect(plan.duration).toBe(0)
@@ -285,5 +294,114 @@ describe('planTransition', () => {
       'fade',
     )
     expect(pop.classNames.exitActive).toBe('slide-up-leave')
+  })
+})
+
+describe('设计修复回归', () => {
+  describe('REPLACE 支持 scale 和自定义 preset', () => {
+    it('REPLACE + scale 触发 scale 动画（不再静默降级 NONE）', () => {
+      const cn = classNamesFor('REPLACE', 'cover', 'scale')
+      expect(cn.enterActive).toBe('scale-enter')
+    })
+
+    it('REPLACE + custom preset 触发自定义动画', () => {
+      registerAnimPreset({
+        type: 'zoom',
+        forward: { enter: 'a', enterActive: 'zoom-in', exit: 'b', exitActive: 'zoom-out' },
+        back: { enter: 'c', enterActive: 'zoom-in-back', exit: 'd', exitActive: 'zoom-out-back' },
+      })
+      const cn = classNamesFor('REPLACE', 'cover', 'zoom')
+      expect(cn.enterActive).toBe('zoom-in')
+    })
+
+    it('REPLACE + modal 仍返回 NONE（modal 需要 PUSH/POP 方向语义）', () => {
+      const cn = classNamesFor('REPLACE', 'cover', 'modal')
+      expect(cn.enter).toBe('none-enter')
+      expect(cn.enterActive).toBe('')
+    })
+
+    it('REPLACE + none 返回 NONE', () => {
+      const cn = classNamesFor('REPLACE', 'cover', 'none')
+      expect(cn.enter).toBe('none-enter')
+    })
+  })
+
+  describe('tabs slide：tabIndex 缺失时优雅降级为 fade', () => {
+    it('两端均无 tabIndex 时使用 FADE_FORWARD', () => {
+      const { classNames } = planTransition(
+        'REPLACE',
+        snap('/tabs/settings'),       // 无 tabIndex
+        snap('/tabs/profile'),         // 无 tabIndex
+        'slide',
+        { tabs: true },
+      )
+      expect(classNames.enterActive).toBe('fade-enter')
+      expect(classNames.exitActive).toBe('fade-leave')
+    })
+
+    it('只有 from 有 tabIndex、to 没有时降级 fade', () => {
+      const fromSnap = {
+        path: '/tabs/a',
+        key: 'k1',
+        state: null,
+        matches: [{ handle: { tabIndex: 0 } }],
+      } as never
+      const toSnap = snap('/tabs/b')   // 无 tabIndex
+
+      const { classNames } = planTransition('REPLACE', fromSnap, toSnap, 'slide', { tabs: true })
+      expect(classNames.enterActive).toBe('fade-enter')
+    })
+
+    it('两端均有 tabIndex 时仍用方向性 slide', () => {
+      const tabSnap = (path: string, tabIndex: number) =>
+        ({ path, key: path, state: null, matches: [{ handle: { tabIndex } }] }) as never
+      const { classNames } = planTransition(
+        'REPLACE',
+        tabSnap('/tabs/a', 0),
+        tabSnap('/tabs/b', 1),
+        'slide',
+        { tabs: true },
+      )
+      expect(classNames.enterActive).toBe('tabs-slide-enter-forward')
+    })
+  })
+
+  describe('per-preset durationMs', () => {
+    it('preset 未设置 durationMs 时使用全局默认值', () => {
+      const { duration } = planTransition('PUSH', snap('/a'), snap('/b', 'b', { transition: 'fade' }), 'cover')
+      expect(duration).toBe(300)
+    })
+
+    it('PUSH 时使用目标 preset 的 durationMs', () => {
+      registerAnimPreset({
+        type: 'slow-fade',
+        forward: { enter: 'fr-animating fr-anim', enterActive: 'fade-enter', exit: 'fr-animating fr-anim', exitActive: 'fade-leave' },
+        back: { enter: 'fr-animating fr-anim', enterActive: 'fade-enter', exit: 'fr-animating fr-anim', exitActive: 'fade-leave' },
+        durationMs: 600,
+      })
+      const { duration } = planTransition(
+        'PUSH',
+        snap('/a'),
+        snap('/b', 'b', { transition: 'slow-fade' }),
+        'cover',
+      )
+      expect(duration).toBe(600)
+    })
+
+    it('POP 时使用 from（origin）preset 的 durationMs', () => {
+      const { duration } = planTransition(
+        'POP',
+        snap('/b', 'b', { transition: 'slow-fade' }),
+        snap('/a'),
+        'cover',
+      )
+      expect(duration).toBe(600)
+    })
+
+    it('modal preset 注册表中 forward 指向 MODAL_PUSH（不再是 cover classNames）', () => {
+      const modal = animPresetRegistry.get('modal')
+      expect(modal?.forward.enter).toContain('fr-modal')
+      expect(modal?.forward.enterActive).toBe('slide-up-enter')
+    })
   })
 })
