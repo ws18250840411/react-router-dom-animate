@@ -13,7 +13,6 @@ import type {
 
 const STATE_KEY = 'transition'
 const MODE_KEY = 'mode'
-const TABS_KEY = 'tabs'
 const TAB_INDEX_KEY = 'tabIndex'
 const DEFAULT_ANIM: RouteAnimType = 'cover'
 const BASE = 'fr-animating fr-anim'
@@ -376,26 +375,8 @@ export function resolveOutletMode(
   prop: OutletMode | undefined,
   matches: RouteSnapshot['matches'],
   state: unknown,
-  tabs?: boolean,
 ): OutletMode {
-  if (tabs) return 'switch'
   return prop ?? modeFromState(state) ?? modeFromHandle(matches) ?? 'stack'
-}
-
-function tabsFromState(state: unknown): boolean | undefined {
-  if (!state || typeof state !== 'object') return undefined
-  const raw = (state as Record<string, unknown>)[TABS_KEY]
-  return raw === true ? true : undefined
-}
-
-export function resolveTabs(
-  prop: boolean | undefined,
-  state: unknown,
-  depth: number,
-): boolean {
-  if (prop !== undefined) return prop
-  if (depth > 0 && tabsFromState(state)) return true
-  return false
 }
 
 function tabIndexFromSnapshot(snap: RouteSnapshot): number | undefined {

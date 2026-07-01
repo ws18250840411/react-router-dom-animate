@@ -97,7 +97,7 @@ export function Home() {
               <button
                 type="button"
                 data-testid={`push-${s.key}`}
-                onClick={() => navigate(s.pushTo, { state: { transition: s.transition, tabs: !!s.key.startsWith('tabs') } })}
+                onClick={() => navigate(s.pushTo, { state: { transition: s.transition, mode: s.key.startsWith('tabs') ? 'switch' : undefined } })}
               >
                 JS
               </button>
@@ -110,18 +110,22 @@ export function Home() {
       </section>
 
       <p className="hint">
-        Tabs 用 tabs + fade/slide（slide 含 A/B/C 三 Tab）；滑块示例为 none + CSS 指示器；Catalog 演示列表→详情 stack。
+        Tabs 用 mode="switch" + fade/slide（slide 含 A/B/C 三 Tab）；滑块示例为 none + CSS 指示器；Catalog 演示列表→详情 stack。
       </p>
 
       <section className="matrix-section" data-testid="matrix-keep-alive">
         <h2 className="matrix-section-title">KeepAlive（React 19 Activity）</h2>
         <p className="hint" style={{ marginBottom: 8 }}>
-          切换 Tab 后页面状态（计数器、输入框、滚动位置）完整保留，基于 React 19.2{' '}
-          <code>&lt;Activity&gt;</code> 实现。
+          基于 React 19.2 <code>&lt;Activity&gt;</code> 实现，状态、DOM、滚动位置完整保留。
         </p>
-        <Link to="/keep-alive" className="tab" data-testid="link-keep-alive">
-          打开 KeepAlive Demo →
-        </Link>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link to="/keep-alive" className="tab" data-testid="link-keep-alive">
+            Switch 模式（Tab 缓存）→
+          </Link>
+          <Link to="/keep-alive-stack" className="tab" data-testid="link-keep-alive-stack">
+            栈模式（列表→详情保活）→
+          </Link>
+        </div>
       </section>
     </div>
   )

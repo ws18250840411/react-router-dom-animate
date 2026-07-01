@@ -19,7 +19,7 @@ type DragSession = {
   moved: boolean
 }
 
-const tabState = { transition: 'none', tabs: true } as const
+const tabState = { transition: 'none', mode: 'switch' } as const
 const DRAG_THRESHOLD = 6
 
 const TAB_LABELS: Record<TabKey, string> = {
@@ -379,7 +379,7 @@ export function TabsIndicatorLayout({
         <span>{isPush ? 'push' : 'wrap'} / tabs · none · 拖拽滑块</span>
       </header>
       <main className="app-main">
-        {isPush ? <AnimatedOutlet /> : <AnimatedOutlet tabs transition="none" />}
+        {isPush ? <AnimatedOutlet /> : <AnimatedOutlet mode="switch" transition="none" />}
       </main>
       <div className="tabs-indicator-dock">
         <nav

@@ -13,7 +13,7 @@ type TabsLayoutProps = {
 export function TabsLayout({ basePath, transition, tabKeys = ['a', 'b'] }: TabsLayoutProps) {
   const navigate = useNavigate()
   const isPush = basePath.startsWith('/push')
-  const tabState = { transition, tabs: true } as const
+  const tabState = { transition, mode: 'switch' } as const
 
   return (
     <div className="app-shell">
@@ -30,7 +30,7 @@ export function TabsLayout({ basePath, transition, tabKeys = ['a', 'b'] }: TabsL
         {isPush ? (
           <AnimatedOutlet />
         ) : (
-          <AnimatedOutlet tabs transition={transition} />
+          <AnimatedOutlet mode="switch" transition={transition} />
         )}
       </main>
       <nav className="tabs">

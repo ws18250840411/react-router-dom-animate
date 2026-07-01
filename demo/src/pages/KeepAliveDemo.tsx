@@ -123,12 +123,7 @@ export function KeepAliveLayout() {
       </header>
 
       <main className="app-main">
-        {/*
-          keepAlive={true} — 每个 pathname 首次访问后常驻 DOM。
-          max={5}          — 最多保留 5 个页面（LRU 淘汰）。
-          aliveRef         — 暴露命令式 API，用于主动清除缓存。
-        */}
-        <AnimatedOutlet keepAlive max={5} aliveRef={aliveRef} />
+        <AnimatedOutlet keepAlive mode="switch" max={5} aliveRef={aliveRef} />
       </main>
 
       <nav className="tabs">

@@ -7,6 +7,7 @@ export default defineConfig({
     environmentMatchGlobs: [
       ['src/__tests__/outlet.test.tsx', 'jsdom'],
       ['src/__tests__/layout-route.test.tsx', 'jsdom'],
+      ['src/__tests__/keepalive-stack.test.tsx', 'jsdom'],
     ],
   },
 })

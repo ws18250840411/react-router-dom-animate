@@ -9,6 +9,7 @@ import { TabC } from './pages/TabC'
 import { TabsLayout } from './pages/TabsLayout'
 import { TabsIndicatorLayout } from './pages/TabsIndicatorLayout'
 import { CatalogLayout, CatalogList, CatalogDetail } from './pages/CatalogLayout'
+import { KeepAliveStackLayout, KeepAliveStackList, KeepAliveStackDetail } from './pages/KeepAliveStackDemo'
 import { AnimPage } from './pages/AnimPage'
 import {
   KeepAliveIndex,
@@ -55,6 +56,15 @@ export const routes: RouteObject[] = [
       },
 
       {
+        path: 'keep-alive-stack',
+        element: <KeepAliveStackLayout />,
+        children: [
+          { index: true, element: <KeepAliveStackList /> },
+          { path: ':id', element: <KeepAliveStackDetail /> },
+        ],
+      },
+
+      {
         path: 'push',
         children: [
           { path: 'cover', element: <AnimPage title="Cover" testId="cover-page" /> },
@@ -65,13 +75,13 @@ export const routes: RouteObject[] = [
           { path: 'modal', element: <ModalPay /> },
           {
             path: 'tabs',
-            handle: { transition: 'fade', tabs: true },
+            handle: { transition: 'fade', mode: 'switch' },
             element: <TabsLayout basePath="/push/tabs" transition="fade" />,
             children: tabChildren,
           },
           {
             path: 'tabs-slide',
-            handle: { transition: 'slide', tabs: true },
+            handle: { transition: 'slide', mode: 'switch' },
             element: (
               <TabsLayout basePath="/push/tabs-slide" transition="slide" tabKeys={['a', 'b', 'c']} />
             ),
@@ -79,7 +89,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: 'tabs-indicator',
-            handle: { transition: 'none', tabs: true },
+            handle: { transition: 'none', mode: 'switch' },
             element: <TabsIndicatorLayout basePath="/push/tabs-indicator" />,
             children: tabSlideChildren,
           },
@@ -146,13 +156,13 @@ export const routes: RouteObject[] = [
           },
           {
             path: 'tabs',
-            handle: { transition: 'fade', tabs: true },
+            handle: { transition: 'fade', mode: 'switch' },
             element: <TabsLayout basePath="/wrap/tabs" transition="fade" />,
             children: tabChildren,
           },
           {
             path: 'tabs-slide',
-            handle: { transition: 'slide', tabs: true },
+            handle: { transition: 'slide', mode: 'switch' },
             element: (
               <TabsLayout basePath="/wrap/tabs-slide" transition="slide" tabKeys={['a', 'b', 'c']} />
             ),
@@ -160,7 +170,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: 'tabs-indicator',
-            handle: { transition: 'none', tabs: true },
+            handle: { transition: 'none', mode: 'switch' },
             element: <TabsIndicatorLayout basePath="/wrap/tabs-indicator" />,
             children: tabSlideChildren,
           },

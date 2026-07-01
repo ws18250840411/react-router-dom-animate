@@ -7,7 +7,6 @@ import {
   registerAnimPreset,
   resolveAnim,
   resolveOutletMode,
-  resolveTabs,
 } from '../transition'
 import type { RouteSnapshot } from '../types'
 
@@ -84,10 +83,6 @@ describe('resolveOutletMode', () => {
     expect(resolveOutletMode('stack', matches, { mode: 'switch' })).toBe('stack')
   })
 
-  it('tabs 强制 switch', () => {
-    expect(resolveOutletMode('stack', [], null, true)).toBe('switch')
-  })
-
   it('state.mode 优先于 handle', () => {
     const matches = [{ id: 'tabs', handle: { mode: 'stack' } }] as never
     expect(resolveOutletMode(undefined, matches, { mode: 'switch' })).toBe('switch')
@@ -103,19 +98,6 @@ describe('resolveOutletMode', () => {
   })
 })
 
-describe('resolveTabs', () => {
-  it('prop 优先', () => {
-    expect(resolveTabs(false, { tabs: true }, 1)).toBe(false)
-  })
-
-  it('嵌套 Outlet 可读 state.tabs', () => {
-    expect(resolveTabs(undefined, { tabs: true }, 1)).toBe(true)
-  })
-
-  it('根 Outlet 忽略 state.tabs', () => {
-    expect(resolveTabs(undefined, { tabs: true }, 0)).toBe(false)
-  })
-})
 
 describe('planTransition', () => {
   const types = ['cover', 'slide', 'fade'] as const

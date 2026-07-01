@@ -7,26 +7,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased] — 2026-07-01
 
-### Breaking / Behavioral Changes
+### Breaking Changes
+
+- **移除 `tabs` prop**：原 `<AnimatedOutlet tabs />` 改为 `<AnimatedOutlet mode="switch" />`。`tabs` 的所有语义完全由 `mode="switch"` 承载，API 更加正交。
+  - 迁移：将所有 `<AnimatedOutlet tabs>` 替换为 `<AnimatedOutlet mode="switch">`，`<AnimatedOutlet keepAlive tabs>` 替换为 `<AnimatedOutlet keepAlive mode="switch">`。
+  - 路由 `handle` 中的 `tabs: true` 改为 `mode: 'switch'`。
 
 - **`keepAlive` 底层由 CSS `visibility` 方案升级为 React 19.2 官方 `<Activity>` 原语**。
-  - `<Activity mode="hidden">` 会清理 Effect，页面再次激活时重新执行 Effect（与 Vue `keepAlive` 的差异：Vue 暂停 Effect；React Activity 清理并重跑）。
-  - `useActivated` / `useDeactivated` 的语义随之调整：前者在 **每次激活（含首次 mount）** 时触发，后者在 **页面隐藏时** 触发（等同于 Effect 清理）。
-  - 组件**状态（useState）、DOM（含 scrollTop）** 仍完整保留，不受 Effect 清理影响。
-  - ⚠️ **已知限制**：`<Activity>` 使用 `display:none` 隐藏页面，浏览器会暂停 `<video>`/`<audio>` 播放，`<iframe>` 可能触发重新加载。如需保留媒体状态，请配合 `useDeactivated`/`useActivated` 手动保存和恢复。
+  - `<Activity mode="hidden">` 会清理 Effect，页面再次激活时重新执行 Effect。
+  - 组件**状态（useState）、DOM（含 scrollTop）** 仍完整保留。
+  - ⚠️ **已知限制**：`<Activity>` 使用 `display:none`，浏览器会暂停 `<video>`/`<audio>` 播放，`<iframe>` 可能触发重新加载。
 
 ### New Features
 
-#### `keepAlive` — 基于 React 19 `<Activity>` 的页面常驻
+#### 极简三 API 设计：`transition` · `mode` · `keepAlive`
+
+每个 API 完全独立，任意组合均有效：
 
 ```tsx
-<AnimatedOutlet keepAlive />                          // 任意 stack 路由
-<AnimatedOutlet mode="switch" keepAlive />            // switch 模式
-<AnimatedOutlet tabs keepAlive transition="slide" />  // tabs 菜单
+// 只有动画
+<AnimatedOutlet transition="cover" />
+
+// 列表→详情保活（栈模式）
+<AnimatedOutlet keepAlive />
+<AnimatedOutlet keepAlive transition="cover" />
+
+// 底部 Tab 保活（switch 模式）
+<AnimatedOutlet keepAlive mode="switch" />
+<AnimatedOutlet keepAlive mode="switch" transition="slide" />
 ```
 
-- 所有曾访问的页面保持在 DOM，切换时不触发 remount，组件状态、滚动位置、已加载数据完整保留。
-- 不再限制"仅 tabs 模式有效"，可与任意 `transition` / `mode` / `tabs` 组合使用。
+- **栈模式**（`keepAlive` 默认）：PUSH 时保留背景页，POP 时精确恢复，适合列表→详情场景。
+- **Switch 模式**（`keepAlive mode="switch"`）：按 pathname 缓存，切换即时，适合底部 Tab 导航。
+- `max` / `aliveRef` 仅在 switch 模式下有效。
 
 #### `max` — LRU 内存上限
 

@@ -49,7 +49,7 @@ describe('AnimatedOutlet integration', () => {
 
   it('嵌套 layout transition 不报错', () => {
     function TabsLayout() {
-      return <AnimatedOutlet tabs transition="fade" />
+      return <AnimatedOutlet mode="switch" transition="fade" />
     }
 
     const nested: RouteObject[] = [
@@ -82,7 +82,7 @@ describe('AnimatedOutlet integration', () => {
               B
             </button>
           </nav>
-          <AnimatedOutlet tabs transition="fade" />
+          <AnimatedOutlet mode="switch" transition="fade" />
         </>
       )
     }
@@ -124,7 +124,7 @@ describe('AnimatedOutlet integration', () => {
     expect(document.querySelectorAll('.animated-outlet-page').length).toBe(countBefore)
   })
 
-  it('tabs + NavLink 重复点击当前 Tab 不 remount 子页面', async () => {
+  it('mode="switch" + NavLink 重复点击当前 Tab 不 remount 子页面', async () => {
     let instances = 0
 
     function TabPage() {
@@ -143,7 +143,7 @@ describe('AnimatedOutlet integration', () => {
               B
             </NavLink>
           </nav>
-          <AnimatedOutlet tabs />
+          <AnimatedOutlet mode="switch" />
         </>
       )
     }
@@ -177,7 +177,7 @@ describe('AnimatedOutlet integration', () => {
     expect(document.querySelectorAll('.fr-animating').length).toBe(0)
   })
 
-  it('tabs 同路径 navigate（新 location.key）不 remount 子页面', async () => {
+  it('mode="switch" 同路径 navigate（新 location.key）不 remount 子页面', async () => {
     let instances = 0
 
     function TabPage() {
@@ -196,7 +196,7 @@ describe('AnimatedOutlet integration', () => {
           >
             repeat
           </button>
-          <AnimatedOutlet tabs />
+          <AnimatedOutlet mode="switch" />
         </>
       )
     }
@@ -422,7 +422,7 @@ describe('state.transition integration', () => {
   })
 })
 
-describe('AnimatedOutlet keepAlive tabs', () => {
+describe('AnimatedOutlet keepAlive mode="switch"', () => {
   it('切换 Tab 后原 Tab 组件不被卸载（保持 mounted）', async () => {
     let mountCount = 0
 
@@ -436,7 +436,7 @@ describe('AnimatedOutlet keepAlive tabs', () => {
       return (
         <>
           <button type="button" data-testid="go-b" onClick={() => navigate('/ka/b', { replace: true })}>B</button>
-          <AnimatedOutlet tabs keepAlive />
+          <AnimatedOutlet mode="switch" keepAlive />
         </>
       )
     }
@@ -491,7 +491,7 @@ describe('AnimatedOutlet keepAlive tabs', () => {
         <>
           <button type="button" data-testid="go-b" onClick={() => navigate('/ka2/b', { replace: true })}>B</button>
           <button type="button" data-testid="go-a" onClick={() => navigate('/ka2/a', { replace: true })}>A</button>
-          <AnimatedOutlet tabs keepAlive />
+          <AnimatedOutlet mode="switch" keepAlive />
         </>
       )
     }
@@ -552,7 +552,7 @@ describe('useActivated / useDeactivated hooks', () => {
         <>
           <button type="button" data-testid="go-a" onClick={() => navigate('/act/a', { replace: true })}>A</button>
           <button type="button" data-testid="go-b" onClick={() => navigate('/act/b', { replace: true })}>B</button>
-          <AnimatedOutlet tabs keepAlive />
+          <AnimatedOutlet mode="switch" keepAlive />
         </>
       )
     }
@@ -620,7 +620,7 @@ describe('useActivated / useDeactivated hooks', () => {
         <>
           <button type="button" data-testid="go-a" onClick={() => navigate('/deact/a', { replace: true })}>A</button>
           <button type="button" data-testid="go-b" onClick={() => navigate('/deact/b', { replace: true })}>B</button>
-          <AnimatedOutlet tabs keepAlive />
+          <AnimatedOutlet mode="switch" keepAlive />
         </>
       )
     }
@@ -673,7 +673,7 @@ describe('useActivated / useDeactivated hooks', () => {
     }
 
     function TabsLayout() {
-      return <AnimatedOutlet tabs keepAlive />
+      return <AnimatedOutlet mode="switch" keepAlive />
     }
 
     function Root() {
@@ -728,7 +728,7 @@ describe('useActivated / useDeactivated hooks', () => {
         children: [
           {
             path: '/strict-deact',
-            element: <AnimatedOutlet tabs keepAlive />,
+            element: <AnimatedOutlet mode="switch" keepAlive />,
             children: [{ path: 'a', element: <TabA /> }],
           },
         ],

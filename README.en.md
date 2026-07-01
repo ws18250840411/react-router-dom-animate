@@ -85,13 +85,12 @@ export function AboutPage() {
 | Prop | Description | Default |
 |------|-------------|---------|
 | `transition` | `cover` · `slide` · `fade` · `scale` · `modal` · `none` | `cover` |
-| `tabs` | Tab-style lateral switching (see Tab Usage) | — |
-| `mode` | `stack` push to detail; `switch` lateral replace | `stack` |
-| `keepAlive` | Keep page components mounted in memory | — |
+| `mode` | `stack` push to detail; `switch` flat tab switching | `stack` |
+| `keepAlive` | Keep pages alive. `mode="stack"`: stack mode (list→detail). `mode="switch"`: switch mode (tab cache). | — |
 
 ## Tab Usage
 
-Two things are needed: **tab bar outside `<AnimatedOutlet>`**, **content area with `tabs` prop**.
+Two things are needed: **tab bar outside `<AnimatedOutlet>`**, **content area with `mode="switch"`**.
 
 ```tsx
 // routes.tsx
@@ -114,7 +113,7 @@ export function TabsLayout() {
   return (
     <div className="flex h-full flex-col">
       <main className="flex-1 overflow-hidden">
-        <AnimatedOutlet tabs />
+        <AnimatedOutlet mode="switch" />
       </main>
       <nav className="flex border-t">
         <NavLink to="/tabs/home" replace>Home</NavLink>
@@ -183,30 +182,41 @@ registerAnimPreset({
 
 ### `keepAlive` — based on React 19 `<Activity>`
 
-`keepAlive` uses React 19.2's official [`<Activity>`](https://react.dev/reference/react/Activity) primitive — no third-party dependencies.
+`keepAlive` uses React 19.2's official [`<Activity>`](https://react.dev/reference/react/Activity) primitive — no third-party dependencies. Switching pages will **not remount** the component; state, DOM nodes (including scroll positions), and loaded data are fully preserved.
+
+#### Stack mode (`keepAlive`, `mode` defaults to `stack`)
+
+For list → detail navigation where the background page state must be retained:
 
 ```tsx
 <AnimatedOutlet keepAlive />
-<AnimatedOutlet keepAlive transition="fade" />
-<AnimatedOutlet tabs keepAlive transition="slide" />
-<AnimatedOutlet mode="switch" keepAlive transition="fade" />
+<AnimatedOutlet keepAlive transition="cover" />
 ```
 
-Switching pages will **not remount** the component. State, DOM nodes (including scroll positions), and loaded data are fully preserved.
+On PUSH, the background page stays alive in the DOM. On POP, the foreground page exits with animation and the background page is restored exactly.
 
-#### `max` — LRU memory limit (recommended)
+#### Switch mode (`keepAlive mode="switch"`)
+
+For bottom navigation bars and multi-tab UIs:
 
 ```tsx
-<AnimatedOutlet keepAlive max={10} />
+<AnimatedOutlet keepAlive mode="switch" />
+<AnimatedOutlet keepAlive mode="switch" transition="slide" />
 ```
 
-When the number of cached pages exceeds `max`, the least recently used page is evicted automatically. Omitting `max` means no limit.
+All visited pages are cached by pathname and instantly shown/hidden when switching.
 
-> **Tip**: For tab-heavy apps, `max={20}` is a good default to prevent unbounded memory growth.
+#### `max` — LRU cache limit (switch mode only)
 
-#### `aliveRef` — imperative cache control
+```tsx
+<AnimatedOutlet keepAlive mode="switch" max={10} />
+```
 
-Use this when you need to clear caches programmatically (e.g. logout, force-refresh a page):
+When the number of cached pages exceeds `max`, the least recently used page is evicted. Omitting `max` means no limit.
+
+#### `aliveRef` — imperative cache control (switch mode only)
+
+Use this when you need to clear caches programmatically (e.g. logout, force-refresh):
 
 ```tsx
 import { useRef } from 'react'
@@ -220,7 +230,7 @@ function Layout() {
     <>
       <button onClick={() => aliveRef.current?.remove('/profile')}>Clear profile cache</button>
       <button onClick={() => aliveRef.current?.removeAll()}>Logout — clear all caches</button>
-      <AnimatedOutlet keepAlive aliveRef={aliveRef} />
+      <AnimatedOutlet keepAlive mode="switch" aliveRef={aliveRef} />
     </>
   )
 }
@@ -232,16 +242,22 @@ function Layout() {
 | `removeAll()` | Remove all caches except the currently active page |
 | `getCached()` | Returns the list of all currently cached pathnames |
 
-#### Reading `keepAlive` from route `handle`
+#### Reading config from route `handle`
 
-Instead of passing `keepAlive` prop to every `AnimatedOutlet`, declare it centrally in the route `handle`:
+Instead of passing props to every `AnimatedOutlet`, declare them centrally in the route `handle`:
 
 ```ts
 // routes.tsx
 {
+  path: 'home',
+  handle: { keepAlive: true, transition: 'cover' },
+  element: <HomeLayout />,  // AnimatedOutlet inside needs no props
+}
+// Bottom tab scenario
+{
   path: 'tabs',
-  handle: { keepAlive: true, transition: 'fade', tabs: true },
-  element: <TabsLayout />,  // AnimatedOutlet inside needs no props
+  handle: { keepAlive: true, mode: 'switch', transition: 'fade' },
+  element: <TabsLayout />,
 }
 ```
 

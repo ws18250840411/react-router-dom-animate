@@ -121,8 +121,8 @@ export function AboutPage() {
 | Prop | 作用 | 默认 |
 |------|------|------|
 | `transition` | `cover` · `slide` · `fade` · `scale` · `modal` · `none` | `cover` |
-| `tabs` | Tab 平级切换（见「Tab 用法」） | — |
-| `mode` | `stack` 压栈进详情；`switch` 平级切换 | `stack` |
+| `mode` | `stack` 压栈进详情；`switch` 平级切换（底部 Tab 等） | `stack` |
+| `keepAlive` | 页面保活。`mode="stack"`：栈模式（列表→详情）；`mode="switch"`：Switch 模式（Tab 缓存） | — |
 
 ### 列表 → 详情
 
@@ -136,7 +136,7 @@ navigate('/catalog/1', { state: { mode: 'stack', transition: 'cover' } })
 
 ## Tab 用法
 
-底栏 Tab 只需两件事：**菜单在 `<AnimatedOutlet>` 外**，**内容区加 `tabs`**。默认即时切换（`none`），不卡顿；要动画再写 `transition="fade"` 或 `"slide"`。
+底栏 Tab 只需两件事：**菜单在 `<AnimatedOutlet>` 外**，**内容区加 `mode="switch"`**。默认即时切换（`none`），不卡顿；要动画再写 `transition="fade"` 或 `"slide"`。
 
 ### 1. 路由 `routes.tsx`
 
@@ -161,7 +161,7 @@ export function TabsLayout() {
   return (
     <div className="flex h-full flex-col">
       <main className="flex-1 overflow-hidden">
-        <AnimatedOutlet tabs />
+        <AnimatedOutlet mode="switch" />
       </main>
       <nav className="flex border-t">
         <NavLink to="/tabs/home" replace>首页</NavLink>
@@ -172,7 +172,7 @@ export function TabsLayout() {
 }
 ```
 
-要点：`nav` 与 `<AnimatedOutlet tabs>` **同级**；菜单不参与转场。
+要点：`nav` 与 `<AnimatedOutlet mode="switch">` **同级**；菜单不参与转场。
 
 ### 3. Tab 子页面
 
@@ -190,15 +190,15 @@ export function HomeTab() {
 **写法 A** — 跳转时带 `state`：
 
 ```tsx
-navigate('/tabs/profile', { replace: true, state: { tabs: true, transition: 'fade' } })
+navigate('/tabs/profile', { replace: true, state: { mode: 'switch', transition: 'fade' } })
 ```
 
 **写法 B** — 组件上声明：
 
 ```tsx
-<AnimatedOutlet tabs transition="fade" />
-// 或 fade / slide
-<AnimatedOutlet tabs transition="slide" />
+<AnimatedOutlet mode="switch" transition="fade" />
+// 或 slide
+<AnimatedOutlet mode="switch" transition="slide" />
 ```
 
 `slide` 时左右滑动；多 Tab 且路径无法表示顺序时，加 `tabIndex`（A 写 `state`，B 写 `handle`）。
@@ -263,29 +263,39 @@ registerAnimPreset({
 
 ### keepAlive：基于 React 19 `<Activity>` 的页面常驻
 
-`keepAlive` 底层使用 React 19.2 官方 [`<Activity>`](https://react.dev/reference/react/Activity) 原语实现，无第三方依赖。
+`keepAlive` 底层使用 React 19.2 官方 [`<Activity>`](https://react.dev/reference/react/Activity) 原语实现，无第三方依赖。切换页面**不会 remount** 组件，state、DOM（含滚动位置）、已加载数据完整保留。
+
+#### 栈模式（`keepAlive`，`mode` 默认 `stack`）
+
+适用于列表 → 详情这类需要保留背景页状态的导航：
 
 ```tsx
-// 与任意配置搭配使用
 <AnimatedOutlet keepAlive />
-<AnimatedOutlet keepAlive transition="fade" />
-<AnimatedOutlet tabs keepAlive transition="slide" />
-<AnimatedOutlet mode="switch" keepAlive transition="fade" />
+<AnimatedOutlet keepAlive transition="cover" />
 ```
 
-启用后切换页面**不会 remount** 组件，组件 state、DOM 节点（含滚动位置）、已加载数据完整保留。
+前进（PUSH）时背景页保活在 DOM 中；返回（POP）时前景页以动画退出，背景页精确恢复。
 
-#### `max`：LRU 内存上限（推荐配置）
+#### Switch 模式（`keepAlive mode="switch"`）
+
+适用于底部导航栏、多标签页等场景：
 
 ```tsx
-<AnimatedOutlet keepAlive max={10} />
+<AnimatedOutlet keepAlive mode="switch" />
+<AnimatedOutlet keepAlive mode="switch" transition="slide" />
 ```
 
-超过 `max` 时按 LRU（最近最少访问）策略自动淘汰最老的页面缓存。不传 `max` 时不限制。
+所有访问过的页面按 pathname 缓存，切换时即时显示/隐藏。
 
-> **提示**：Tabs 类应用建议 `max={20}`，避免长期使用后内存增长。
+#### `max`：LRU 内存上限（仅 switch 模式）
 
-#### `aliveRef`：命令式缓存控制
+```tsx
+<AnimatedOutlet keepAlive mode="switch" max={10} />
+```
+
+超过 `max` 时按 LRU 自动淘汰最老的缓存。不传 `max` 时不限制。
+
+#### `aliveRef`：命令式缓存控制（仅 switch 模式）
 
 需要主动清除缓存（如登出、刷新某页）时使用：
 
@@ -299,12 +309,9 @@ function Layout() {
 
   return (
     <>
-      {/* 精确清除：缓存移除后下次访问重新 mount */}
       <button onClick={() => aliveRef.current?.remove('/profile')}>清除个人页缓存</button>
-      {/* 全量清除：不含当前活跃页 */}
       <button onClick={() => aliveRef.current?.removeAll()}>登出 — 清除所有缓存</button>
-
-      <AnimatedOutlet keepAlive aliveRef={aliveRef} />
+      <AnimatedOutlet keepAlive mode="switch" aliveRef={aliveRef} />
     </>
   )
 }
@@ -316,16 +323,22 @@ function Layout() {
 | `removeAll()` | 移除所有非当前活跃页的缓存 |
 | `getCached()` | 返回当前缓存的所有 pathname 列表 |
 
-#### 从路由 `handle` 读取 `keepAlive` 配置
+#### 从路由 `handle` 读取配置
 
-无需给每个 `AnimatedOutlet` 手动传 `keepAlive` prop，可在路由 `handle` 中统一声明：
+无需给每个 `AnimatedOutlet` 手动传 prop，可在路由 `handle` 中统一声明：
 
 ```ts
 // routes.tsx
 {
+  path: 'home',
+  handle: { keepAlive: true, transition: 'cover' },
+  element: <HomeLayout />,  // 内部 AnimatedOutlet 无需任何 prop
+}
+// 底部 Tab 场景
+{
   path: 'tabs',
-  handle: { keepAlive: true, transition: 'fade', tabs: true },
-  element: <TabsLayout />,  // 内部 AnimatedOutlet 无需任何 prop
+  handle: { keepAlive: true, mode: 'switch', transition: 'fade' },
+  element: <TabsLayout />,
 }
 ```
 
