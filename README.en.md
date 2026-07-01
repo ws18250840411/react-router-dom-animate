@@ -252,12 +252,15 @@ Props take precedence over handle values; both can coexist.
 | Behavior | Vue `keepAlive` | React `<Activity>` |
 |----------|-----------------|---------------------|
 | Component state | ✅ Preserved | ✅ Preserved |
-| DOM / scrollTop | ✅ Preserved | ✅ Preserved (DOM stays mounted) |
+| DOM / scrollTop | ✅ Preserved | ✅ Preserved (with manual save/restore) |
 | `useEffect` | ⏸ Paused, not cleaned up | 🔄 Cleaned up when hidden, re-run when visible |
 | `onActivated` | Dedicated lifecycle | `useActivated` hook |
 | `onDeactivated` | Dedicated lifecycle | `useDeactivated` hook |
+| video / audio / iframe | ✅ Unaffected | ⚠️ Pauses or reloads when hidden (see below) |
 
-> **Practical impact**: Side effects like polling or WebSockets are automatically cleaned up when hidden and re-established when visible — this is generally the safer behavior.
+> **`useEffect` impact**: Side effects like polling or WebSockets are automatically cleaned up when hidden and re-established when visible — this is generally the safer behavior.
+>
+> **video / audio / iframe caveat**: `<Activity>` hides pages via `display:none`, which causes browsers to pause `<video>`/`<audio>` playback and may trigger `<iframe>` reloads. This is a browser-level behavior that cannot be worked around in JavaScript. If your page contains media players or embedded documents, use `useDeactivated` to save the playback position and `useActivated` to restore it.
 
 ### `useActivated` / `useDeactivated` — page lifecycle hooks
 

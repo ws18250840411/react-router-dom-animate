@@ -13,6 +13,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `<Activity mode="hidden">` 会清理 Effect，页面再次激活时重新执行 Effect（与 Vue `keepAlive` 的差异：Vue 暂停 Effect；React Activity 清理并重跑）。
   - `useActivated` / `useDeactivated` 的语义随之调整：前者在 **每次激活（含首次 mount）** 时触发，后者在 **页面隐藏时** 触发（等同于 Effect 清理）。
   - 组件**状态（useState）、DOM（含 scrollTop）** 仍完整保留，不受 Effect 清理影响。
+  - ⚠️ **已知限制**：`<Activity>` 使用 `display:none` 隐藏页面，浏览器会暂停 `<video>`/`<audio>` 播放，`<iframe>` 可能触发重新加载。如需保留媒体状态，请配合 `useDeactivated`/`useActivated` 手动保存和恢复。
 
 ### New Features
 

@@ -52,7 +52,7 @@ export interface AnimatedOutletProps {
    */
   max?: number
   /**
-   * Ref for imperative cache control.  Only applies when `keepAlive={true}`.
+   * Ref for imperative cache control. Only applies when `keepAlive={true}`.
    * After mount, `aliveRef.current` exposes `remove`, `removeAll`, and
    * `getCached` to manipulate the page cache from outside the component.
    *
@@ -67,8 +67,7 @@ export interface AnimatedOutletProps {
    * When true, pages exited via forward (PUSH) navigation are kept alive in
    * the DOM instead of being unmounted. Returning to a kept-alive page (POP)
    * restores the exact DOM state — including scroll positions — without any
-   * component remount. Useful for root-level outlets where you want tab/stack
-   * backgrounds to survive navigation to detail pages and back.
+   * component remount.
    */
   keepBackground?: boolean
   className?: string
@@ -76,6 +75,9 @@ export interface AnimatedOutletProps {
 }
 
 const DepthContext = createContext(0)
+// Signals that this subtree is inside an alive=false (exiting) BackgroundPreserveRoot entry.
+// Nested BackgroundPreserveRoots must not update their outlet/locCtx while frozen.
+const FrozenContext = createContext(false)
 
 function pageTransitionKey(
   mode: OutletMode,
@@ -85,10 +87,8 @@ function pageTransitionKey(
   locationKey: string,
 ): string {
   if (mode === 'switch') return pathname
-  // Use the layout-route ID at all depths so intermediate layouts (e.g. a tabs
-  // layout wrapping a KeepAliveRoot) are not remounted on every same-layout
-  // navigation. Using locationKey at depth>0 caused KeepAliveRoot to be
-  // destroyed on every tab switch, losing cached scroll positions and state.
+  // Use layout-route ID so intermediate layouts (e.g. a tabs layout wrapping
+  // KeepAliveRoot) are not remounted on every same-layout navigation.
   return layoutRouteId(matches, pathname) ?? locationKey
 }
 
@@ -120,9 +120,9 @@ function PageScope({ transition, children }: { transition: RouteAnimType; childr
  */
 function FrozenOutlet({ outlet, locCtx }: { outlet: ReactNode; locCtx: unknown }) {
   const [frozen] = useState(outlet)
-  const ctx = useRef(locCtx)
+  const [frozenCtx] = useState(locCtx)
   return (
-    <UNSAFE_LocationContext.Provider value={ctx.current as never}>{frozen}</UNSAFE_LocationContext.Provider>
+    <UNSAFE_LocationContext.Provider value={frozenCtx as never}>{frozen}</UNSAFE_LocationContext.Provider>
   )
 }
 
@@ -167,20 +167,13 @@ function PageTransition({
 const PageActiveContext = createContext<string | null>(null)
 
 /**
- * Replaces `AnimatedRoot` when `keepBackground={true}` is set.
- *
  * PUSH navigation keeps the exiting page alive via `<Activity mode="hidden">` after
- * its exit animation completes.  The `<Activity>` boundary preserves component state,
- * DOM, and scroll positions (Activity keeps DOM nodes mounted, so `scrollTop` values
- * survive `display: none` without any manual save/restore logic).  Effects are cleaned
- * up while hidden, preventing background resource leaks.
+ * its exit animation completes. POP switches it back to `mode="visible"` and plays
+ * the enter animation.
  *
- * POP navigation switches the background page back to `<Activity mode="visible">` and
- * plays the enter animation.  Scroll positions are automatically restored by the browser
- * when `display: none` is removed and the element re-enters the layout flow.
- *
- * Each history entry is tracked by `location.key`, which is stable across React
- * re-renders and uniquely identifies a slot in the browser's history stack.
+ * `display:none` resets scrollTop for nested overflow containers, so scroll positions
+ * are saved in `onExited` (while the DOM is still visible) and restored in
+ * `useLayoutEffect` after Activity makes the page visible again.
  */
 function BackgroundPreserveRoot({
   depth,
@@ -200,13 +193,13 @@ function BackgroundPreserveRoot({
   const navType = useNavigationType()
   const outlet = useOutlet()
   const locCtx = useContext(UNSAFE_LocationContext)
+  const isFrozen = useContext(FrozenContext)
 
   const tabs = resolveTabs(tabsProp, location.state, depth)
   const mode = resolveOutletMode(modeProp, matches, location.state, tabs)
   const fallback = layoutTransition ?? (tabs ? 'none' : 'cover')
   const pageKey = pageTransitionKey(mode, depth, matches, location.pathname, location.key)
 
-  // ---- Snapshot tracking (mirrors AnimatedRoot) ----
   const fromSnapRef = useRef<RouteSnapshot>(snap(location, matches))
   const toSnapRef = useRef<RouteSnapshot>(snap(location, matches))
   const lastToKeyRef = useRef(location.key)
@@ -247,24 +240,17 @@ function BackgroundPreserveRoot({
     return () => window.clearTimeout(timer)
   }, [location.key, activePlan.duration, settledLocation.key, commitSettled])
 
-  // ---- Back-stack management ----
   type StackEntry = {
     locKey: string
     pageKey: string
     outlet: ReactNode
     locCtx: unknown
     nodeRef: RefObject<HTMLDivElement | null>
-    /** Keep in DOM after exiting (background). False means unmount after exit. */
     alive: boolean
-    /**
-     * Activity mode for this entry.
-     * - 'visible': during animation and when on top.
-     * - 'hidden': after the exit animation completes (background entries only).
-     *   React cleans up Effects in hidden subtrees, preventing background leaks.
-     *   Scroll positions are saved in onExited (while still visible) and restored
-     *   via useLayoutEffect when the entry returns to the top.
-     */
     activityMode: 'visible' | 'hidden'
+    // true = this entry was restored from the back-stack via POP.
+    // Skip the enter animation so the exiting foreground page slides away above it.
+    skipEnter?: boolean
   }
 
   const nodeRefsCache = useRef(new Map<string, RefObject<HTMLDivElement | null>>())
@@ -277,15 +263,17 @@ function BackgroundPreserveRoot({
 
   const stackRef = useRef<StackEntry[]>([])
   const [, forceRender] = useReducer((n: number) => n + 1, 0)
-  // Entries freshly added via PUSH that need a second render to trigger enter animation.
   const pendingEnterRef = useRef(new Set<string>())
 
-  // Synchronously update stack in render (same pattern as ref mutations in AnimatedRoot).
+  // Scroll positions saved in onExited (while DOM is still visible, before display:none).
+  // Restored in useLayoutEffect after POP makes the entry visible again.
+  const bgScrollsRef = useRef(new Map<string, Array<[HTMLElement, number, number]>>())
+  const pendingScrollRestoreRef = useRef(new Set<string>())
+
   const locKey = location.key
   const topEntry = stackRef.current[stackRef.current.length - 1] as StackEntry | undefined
 
   if (!topEntry) {
-    // Initial mount — no animation
     stackRef.current = [
       { locKey, pageKey, outlet, locCtx, nodeRef: getNodeRef(locKey), alive: true, activityMode: 'visible' },
     ]
@@ -297,14 +285,17 @@ function BackgroundPreserveRoot({
         if (stack[i].locKey === locKey) { bgIdx = i; break }
       }
       if (bgIdx >= 0) {
-        // Restore background entry to top; entries above it are popped off.
         const below = stackRef.current.slice(0, bgIdx)
         const poppedOff = stackRef.current.slice(bgIdx + 1).map(e => ({ ...e, alive: false }))
-        // Switch the restored entry back to visible so its enter animation plays.
-        const restored: StackEntry = { ...stackRef.current[bgIdx], outlet, locCtx, activityMode: 'visible' }
+        // skipEnter=true: restored entry must not play an enter animation —
+        // the exiting foreground page slides away on top via DOM order.
+        const restored: StackEntry = { ...stackRef.current[bgIdx], outlet, locCtx, activityMode: 'visible', skipEnter: true }
         stackRef.current = [...below, ...poppedOff, restored]
+        if (bgScrollsRef.current.has(locKey)) {
+          pendingScrollRestoreRef.current.add(locKey)
+        }
       } else {
-        // Target not found in back-stack (jumped back multiple levels). Start fresh.
+        // Target not found in back-stack (jumped back multiple levels).
         stackRef.current = [
           { locKey, pageKey, outlet, locCtx, nodeRef: getNodeRef(locKey), alive: true, activityMode: 'visible' },
         ]
@@ -314,26 +305,29 @@ function BackgroundPreserveRoot({
         ...stackRef.current,
         { locKey, pageKey, outlet, locCtx, nodeRef: getNodeRef(locKey), alive: true, activityMode: 'visible' },
       ]
-      // New PUSH entry: render first with in={false} so CSSTransition starts in "exited"
-      // state; then useLayoutEffect triggers a second render with in={true} to play the
-      // enter animation. Without this two-render trick CSSTransition would skip the
-      // animation because it started life with in={true} (appear=false default).
+      // Two-render trick: first paint with in={false} so CSSTransition starts in
+      // "exited" state; useLayoutEffect then flips to in={true} to play the enter animation.
       pendingEnterRef.current.add(locKey)
     } else {
-      // REPLACE: swap top entry (no enter animation)
+      // REPLACE: swap top entry, clean up replaced entry to prevent memory leaks.
+      const replaced = stackRef.current[stackRef.current.length - 1]
+      if (replaced && replaced.locKey !== locKey) {
+        nodeRefsCache.current.delete(replaced.locKey)
+        bgScrollsRef.current.delete(replaced.locKey)
+      }
       stackRef.current = [
         ...stackRef.current.slice(0, -1),
         { locKey, pageKey, outlet, locCtx, nodeRef: getNodeRef(locKey), alive: true, activityMode: 'visible' },
       ]
     }
-  } else {
-    // Same location key: keep outlet current (location hasn't changed, just re-render).
+  } else if (!isFrozen) {
+    // When frozen (inside an alive=false exiting entry), skip outlet/locCtx updates so
+    // nested BackgroundPreserveRoots don't replace exiting content with the new route's outlet.
     stackRef.current = stackRef.current.map((e, i, arr) =>
       i === arr.length - 1 ? { ...e, outlet, locCtx } : e,
     )
   }
 
-  // Flush pendingEnter: change in={false} → in={true} for freshly pushed entries.
   useLayoutEffect(() => {
     if (pendingEnterRef.current.size > 0) {
       pendingEnterRef.current.clear()
@@ -341,18 +335,44 @@ function BackgroundPreserveRoot({
     }
   })
 
+  useLayoutEffect(() => {
+    if (pendingScrollRestoreRef.current.size === 0) return
+    pendingScrollRestoreRef.current.forEach((lk) => {
+      const saved = bgScrollsRef.current.get(lk)
+      const container = nodeRefsCache.current.get(lk)?.current
+      if (saved && container) {
+        for (const [el, top, left] of saved) {
+          if (el.isConnected) {
+            el.scrollTop = top
+            el.scrollLeft = left
+          }
+        }
+      }
+    })
+    pendingScrollRestoreRef.current.clear()
+  })
+
+  // Render exiting entries (alive=false) last so they paint on top of the restored
+  // background page in the correct stacking order — no z-index hacks required.
+  const logicalStack = stackRef.current
+  const renderStack = [...logicalStack].sort((a, b) => {
+    if (a.alive === b.alive) return 0
+    return a.alive ? -1 : 1
+  })
+
   return (
     <div className={className ? `animated-outlet-group ${className}` : 'animated-outlet-group'}>
-      {stackRef.current.map((entry, i, arr) => {
-        const isTop = i === arr.length - 1
-        const isSecond = i === arr.length - 2
-        // Only the top two entries play animations; deeper background entries are
-        // hidden by Activity (mode='hidden') so they need no animation.
-        const entryTimeout = isTop || isSecond ? timeout : 0
-        const entryClassNames = isTop || isSecond ? activePlan.classNames : {}
-        // pendingEnter entries render with in={false} on first paint so that
-        // CSSTransition starts in "exited" state; the useLayoutEffect flush then
-        // triggers in={true} to start the enter animation.
+      {renderStack.map((entry) => {
+        const logicalIdx = logicalStack.indexOf(entry)
+        const isTop = logicalIdx === logicalStack.length - 1
+        const isSecond = logicalIdx === logicalStack.length - 2
+        // Restored background entries (POP) appear immediately without an enter animation:
+        // the exiting foreground page paints on top via DOM order (rendered last).
+        const skipEnter = isTop && entry.skipEnter === true
+        // Only the top two entries need animation; deeper entries stay hidden via Activity.
+        const entryTimeout = skipEnter ? 0 : (isTop || isSecond ? timeout : 0)
+        const entryClassNames = skipEnter ? {} : (isTop || isSecond ? activePlan.classNames : {})
+        // First paint with in={false}; useLayoutEffect then flips to in={true}.
         const inProp = isTop && !pendingEnterRef.current.has(entry.locKey)
         return (
           <Activity key={entry.locKey} mode={entry.activityMode}>
@@ -365,14 +385,22 @@ function BackgroundPreserveRoot({
               unmountOnExit={!entry.alive}
               onExited={() => {
                 if (!entry.alive) {
-                  // Popped pages: remove entirely from stack and DOM.
                   stackRef.current = stackRef.current.filter(e => e.locKey !== entry.locKey)
                   nodeRefsCache.current.delete(entry.locKey)
+                  bgScrollsRef.current.delete(entry.locKey)
                   forceRender()
                 } else {
-                  // Background pages: switch to Activity hidden after exit animation.
-                  // Activity keeps DOM nodes mounted, so scroll positions are preserved
-                  // by the browser across display:none hide/show cycles automatically.
+                  // Save scroll before display:none resets scrollTop, then go hidden.
+                  const container = entry.nodeRef.current
+                  if (container) {
+                    const scrollables: Array<[HTMLElement, number, number]> = []
+                    ;[container, ...Array.from(container.querySelectorAll<HTMLElement>('*'))].forEach((el) => {
+                      if (el.scrollTop !== 0 || el.scrollLeft !== 0) {
+                        scrollables.push([el, el.scrollTop, el.scrollLeft])
+                      }
+                    })
+                    bgScrollsRef.current.set(entry.locKey, scrollables)
+                  }
                   stackRef.current = stackRef.current.map(e =>
                     e.locKey === entry.locKey ? { ...e, activityMode: 'hidden' as const } : e,
                   )
@@ -381,9 +409,19 @@ function BackgroundPreserveRoot({
               }}
             >
               <div ref={entry.nodeRef} className="animated-outlet-page">
-                <UNSAFE_LocationContext.Provider value={entry.locCtx as never}>
-                  {entry.outlet}
-                </UNSAFE_LocationContext.Provider>
+                {entry.alive ? (
+                  <UNSAFE_LocationContext.Provider value={entry.locCtx as never}>
+                    {entry.outlet}
+                  </UNSAFE_LocationContext.Provider>
+                ) : (
+                  // Freeze outlet inside exiting entries so nested BackgroundPreserveRoots
+                  // don't replace the exiting content with the new route's outlet.
+                  <FrozenContext.Provider value={true}>
+                    <UNSAFE_LocationContext.Provider value={entry.locCtx as never}>
+                      {entry.outlet}
+                    </UNSAFE_LocationContext.Provider>
+                  </FrozenContext.Provider>
+                )}
               </div>
             </CSSTransition>
           </Activity>
@@ -396,18 +434,15 @@ function BackgroundPreserveRoot({
 /**
  * Implements `keepAlive={true}` for `<AnimatedOutlet>`.
  *
- * Each unique pathname is cached in the DOM after the first visit.  Switching
- * tabs shows the cached page via `<Activity mode="visible">` and hides others
- * with `<Activity mode="hidden">`.  The `<Activity>` boundary:
- *   - Visually hides content via `display: none`
- *   - Cleans up all Effects in the hidden subtree (prevents background leaks)
- *   - Preserves React component state (useState, useReducer, …)
- *   - Note: `display: none` resets `scrollTop` for nested overflow containers
- *     in the browser, so we save/restore scroll positions manually (see the
- *     "Scroll preservation" block below).
+ * Each unique pathname is cached via `<Activity>`. The active page is
+ * `mode="visible"`; all others are `mode="hidden"` (display:none). React state
+ * is preserved across switches; Effects are cleaned up while hidden.
  *
- * When `max` is set, the least-recently-visited page beyond the limit is
- * evicted (unmounted entirely) using an LRU strategy.
+ * `display:none` resets scrollTop for nested overflow containers, so scroll
+ * positions are tracked via capture-phase listeners and restored in useLayoutEffect.
+ *
+ * Known limitation: video/audio elements pause when hidden, and iframes may
+ * reload — this is a browser-level consequence of display:none.
  */
 function KeepAliveRoot({
   max,
@@ -428,71 +463,63 @@ function KeepAliveRoot({
   type PageSnap = { outlet: ReactNode; locCtx: unknown }
 
   const snapshotsRef = useRef(new Map<string, PageSnap>())
-  // Ordered list of cached pathnames — tail is most-recently-used (LRU).
+  // Tail is most-recently-used (LRU order).
   const keysRef = useRef<string[]>([])
-  // Stable ref to current pageKey for imperative callbacks.
   const pageKeyRef = useRef(pageKey)
   pageKeyRef.current = pageKey
-  // Triggered by imperative remove/removeAll to sync the render.
   const [, forceRender] = useReducer((n: number) => n + 1, 0)
 
-  // Always update the snapshot so the active page gets fresh outlet/locCtx.
+  const containerRefsRef = useRef(new Map<string, HTMLDivElement>())
+  const scrollCacheRef = useRef(new Map<string, Array<[HTMLElement, number, number]>>())
+
   snapshotsRef.current.set(pageKey, { outlet, locCtx })
 
-  // Update LRU ordering: move current key to tail (most-recently-used).
+  // Move current key to tail (most-recently-used).
   if (keysRef.current.includes(pageKey)) {
     keysRef.current = keysRef.current.filter((k) => k !== pageKey)
   }
   keysRef.current = [...keysRef.current, pageKey]
 
-  // Evict least-recently-used entries when over the max limit.
   if (max !== undefined && keysRef.current.length > max) {
     const evicted = keysRef.current.slice(0, keysRef.current.length - max)
     keysRef.current = keysRef.current.slice(keysRef.current.length - max)
-    for (const k of evicted) snapshotsRef.current.delete(k)
-  }
-
-  // ── Scroll preservation ────────────────────────────────────────────────────
-  // <Activity mode="hidden"> applies display:none, which resets scrollTop for
-  // nested overflow containers. We save scroll positions during the render
-  // phase (before React commits the DOM mutation, so the old DOM is still
-  // readable via containerRefsRef) and restore them in useLayoutEffect after
-  // the new active page is shown.
-  //
-  // Reading DOM in render is safe here: it is a side-effect-free read of the
-  // already-committed DOM, and concurrent double-renders are idempotent.
-  const containerRefsRef = useRef(new Map<string, HTMLDivElement>())
-  const savedScrollsRef = useRef(new Map<string, Array<[HTMLElement, number, number]>>())
-  const prevPageKeyRef = useRef(pageKey)
-
-  if (prevPageKeyRef.current !== pageKey) {
-    const leavingKey = prevPageKeyRef.current
-    const container = containerRefsRef.current.get(leavingKey)
-    if (container) {
-      const scrollables: Array<[HTMLElement, number, number]> = []
-      container.querySelectorAll<HTMLElement>('*').forEach((el) => {
-        if (el.scrollTop !== 0 || el.scrollLeft !== 0) {
-          scrollables.push([el, el.scrollTop, el.scrollLeft])
-        }
-      })
-      savedScrollsRef.current.set(leavingKey, scrollables)
+    for (const k of evicted) {
+      snapshotsRef.current.delete(k)
+      scrollCacheRef.current.delete(k)
     }
-    prevPageKeyRef.current = pageKey
   }
 
-  // Restore scroll positions after the newly-active page becomes visible.
+  // Capture-phase scroll listener on each page container: tracks positions for
+  // all scrollable descendants. Concurrent-mode safe — no render-phase DOM reads.
   useLayoutEffect(() => {
-    const saved = savedScrollsRef.current.get(pageKey)
+    const cleanups: Array<() => void> = []
+    containerRefsRef.current.forEach((container, key) => {
+      const handler = () => {
+        const items: Array<[HTMLElement, number, number]> = []
+        ;[container, ...Array.from(container.querySelectorAll<HTMLElement>('*'))].forEach((el) => {
+          if (el.scrollTop !== 0 || el.scrollLeft !== 0) items.push([el, el.scrollTop, el.scrollLeft])
+        })
+        scrollCacheRef.current.set(key, items)
+      }
+      container.addEventListener('scroll', handler, { capture: true, passive: true })
+      cleanups.push(() => container.removeEventListener('scroll', handler, { capture: true }))
+    })
+    return () => cleanups.forEach((c) => c())
+  })
+
+  // Restore scroll after Activity removes display:none (runs synchronously post-commit).
+  useLayoutEffect(() => {
+    const saved = scrollCacheRef.current.get(pageKey)
     if (saved?.length) {
       for (const [el, top, left] of saved) {
-        el.scrollTop = top
-        el.scrollLeft = left
+        if (el.isConnected) {
+          el.scrollTop = top
+          el.scrollLeft = left
+        }
       }
     }
   }, [pageKey])
-  // ── End scroll preservation ────────────────────────────────────────────────
 
-  // Expose imperative cache-control API via aliveRef.
   useLayoutEffect(() => {
     if (!aliveRef) return
     aliveRef.current = {
@@ -500,7 +527,7 @@ function KeepAliveRoot({
         if (pathname === pageKeyRef.current) return
         snapshotsRef.current.delete(pathname)
         keysRef.current = keysRef.current.filter((k) => k !== pathname)
-        savedScrollsRef.current.delete(pathname)
+        scrollCacheRef.current.delete(pathname)
         forceRender()
       },
       removeAll() {
@@ -508,7 +535,7 @@ function KeepAliveRoot({
         for (const k of [...keysRef.current]) {
           if (k !== active) {
             snapshotsRef.current.delete(k)
-            savedScrollsRef.current.delete(k)
+            scrollCacheRef.current.delete(k)
           }
         }
         keysRef.current = keysRef.current.filter((k) => k === active)
@@ -558,20 +585,8 @@ function usePageActive(): boolean {
 
 /**
  * Fires every time the page becomes active, including on initial mount.
- *
- * Firing is deferred to a microtask so the callback always executes
- * asynchronously, consistent with `useDeactivated`.
- *
- * Note on ordering: React 18 concurrent mode processes effects for newly
- * activating pages before deactivating pages within the same render batch,
- * so `useActivated` may fire before the sibling `useDeactivated`. This is
- * a React runtime difference from Vue KeepAlive but does not affect
- * practical use cases (data loading, cleanup are page-local).
- *
- * React StrictMode safety: StrictMode runs mount → cleanup → re-mount. The
- * re-mount calls `cancelRef.current?.()` which cancels the pending microtask
- * before it fires; only the microtask from the re-mount executes, so the
- * callback fires exactly once per activation cycle.
+ * Deferred to a microtask so it always runs asynchronously, consistent with `useDeactivated`.
+ * StrictMode safe: the re-mount cancels the pending microtask before it fires.
  */
 export function useActivated(callback: () => void): void {
   const isActive = usePageActive()
@@ -592,45 +607,28 @@ export function useActivated(callback: () => void): void {
 }
 
 /**
- * Fires every time the page is deactivated:
- * - Inside keepAlive: fires immediately on tab switch (isActive → false), or
- *   asynchronously (next microtask) when the keepAlive group unmounts while
- *   this page is still active (e.g. navigating to a non-tab route).
- * - Outside keepAlive: equivalent to a `useEffect` cleanup (fires on unmount).
- *
- * React StrictMode safety: StrictMode simulates unmount+remount on the same
- * component instance to surface cleanup bugs. The remount causes the next
- * effect to run synchronously and cancel the pending microtask before it
- * executes, so the callback is never fired spuriously on initial mount.
+ * Fires every time the page is deactivated (tab switch or unmount).
+ * Outside keepAlive: equivalent to a `useEffect` cleanup.
+ * StrictMode safe: the re-mount cancels any pending microtask before it fires.
  */
 export function useDeactivated(callback: () => void): void {
   const isInKeepAlive = useContext(PageActiveContext) !== null
   const isActive = usePageActive()
   const cbRef = useRef(callback)
   cbRef.current = callback
-  // Holds a cancel function for any pending microtask-based deactivation.
-  // Calling it before the microtask fires prevents a spurious invocation.
   const cancelRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
-    // Cancel any pending deactivation from the previous cleanup — this runs
-    // on both StrictMode re-mounts (same instance) and normal deps changes,
-    // preventing the microtask from firing when the component stays alive.
     cancelRef.current?.()
     cancelRef.current = null
 
     if (!isInKeepAlive) return () => { cbRef.current() }
 
     if (!isActive) {
-      // Tab switch: page became inactive — fire immediately.
       cbRef.current()
       return
     }
 
-    // Active page in keepAlive: schedule deactivation via a microtask so it
-    // fires when the keepAlive group unmounts (no re-mount, microtask runs).
-    // If the component re-mounts first (StrictMode or deps change), the cancel
-    // at the top of the next effect invocation voids the microtask.
     return () => {
       let cancelled = false
       cancelRef.current = () => { cancelled = true }
@@ -677,12 +675,10 @@ function AnimatedRoot({
   const fallback = layoutTransition ?? (tabs ? 'none' : 'cover')
   const pageKey = pageTransitionKey(mode, depth, matches, location.pathname, location.key)
 
-  // Lock pageKey to the value computed when location.key last changed.
-  // useMatches() reads the global router state (not frozen by UNSAFE_LocationContext),
-  // so inside a keepBackground background entry it can drift from the frozen
-  // location and produce a different pageKey — causing TransitionGroup to re-key
-  // its child and destroy the kept-alive DOM. By snapshotting on location.key
-  // changes only, we ensure the key stays stable while the location is frozen.
+  // Snapshot pageKey on location.key change only: useMatches() reads the global
+  // router state (not frozen by UNSAFE_LocationContext), so inside a keepBackground
+  // background entry it can drift and produce a different pageKey — causing
+  // TransitionGroup to re-key its child and destroy the kept-alive DOM.
   const stablePageKeyRef = useRef(pageKey)
   const stablePageKeyLocRef = useRef(location.key)
   if (stablePageKeyLocRef.current !== location.key) {
@@ -784,9 +780,7 @@ export default function AnimatedOutlet({
   const depth = useContext(DepthContext)
   const matches = useMatches()
 
-  // Allow declaring keepAlive / keepBackground via route handle in addition to props.
-  // Prop takes precedence; handle is used when prop is not provided.
-  // Usage: export const meta = { keepAlive: true } in a _layout.tsx file.
+  // Props take precedence over route handle flags.
   const handleFlags = matches.reduce<{ keepAlive?: boolean; keepBackground?: boolean }>(
     (acc, m) => {
       const h = m.handle as Record<string, unknown> | null | undefined

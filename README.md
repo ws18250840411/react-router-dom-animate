@@ -336,12 +336,15 @@ prop 的优先级高于 handle，二者可混用。
 | 行为 | Vue `keepAlive` | React `<Activity>` |
 |------|-----------------|---------------------|
 | 组件状态（state） | ✅ 保留 | ✅ 保留 |
-| DOM / scrollTop | ✅ 保留 | ✅ 保留（DOM 节点不销毁） |
+| DOM / scrollTop | ✅ 保留 | ✅ 保留（含手动 scroll 存取） |
 | `useEffect` | ⏸ 暂停，不清理 | 🔄 隐藏时清理，显示时重跑 |
 | `onActivated` | 专属生命周期 | `useActivated` |
 | `onDeactivated` | 专属生命周期 | `useDeactivated` |
+| video / audio / iframe | ✅ 不受影响 | ⚠️ 隐藏时暂停或重载（见下） |
 
-> **实际影响**：如果页面有轮询、WebSocket 等副作用，切走时会自动清理，切回时会重新建立——这通常是更安全的行为。
+> **`useEffect` 的实际影响**：轮询、WebSocket 等副作用切走时自动清理，切回时重新建立——通常是更安全的行为。
+>
+> **video / audio / iframe 注意**：`<Activity>` 通过 `display:none` 隐藏页面，浏览器会暂停 `<video>`/`<audio>` 播放，`<iframe>` 可能触发重新加载。这是浏览器的底层行为，无法通过 JavaScript 绕过。如果页面包含媒体播放器或内嵌文档，请结合 `useDeactivated` 保存播放进度，在 `useActivated` 中恢复。
 
 ### `useActivated` / `useDeactivated`：页面进入与离开的生命周期回调
 
