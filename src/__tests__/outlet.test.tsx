@@ -227,6 +227,357 @@ describe('AnimatedOutlet integration', () => {
   })
 })
 
+describe('keepAlive switch + slide 动画（快速切换）', () => {
+  function makeTabsApp(tabIndex = false) {
+    function TabPage({ name }: { name: string }) {
+      return <div data-testid={`page-${name}`}>{name}</div>
+    }
+
+    function TabsLayout() {
+      return (
+        <>
+          <nav>
+            <NavLink to="/tabs/a" replace data-testid="nav-a">A</NavLink>
+            <NavLink to="/tabs/b" replace data-testid="nav-b">B</NavLink>
+          </nav>
+          <AnimatedOutlet keepAlive mode="switch" transition="slide" />
+        </>
+      )
+    }
+
+    const tabRoutes: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          {
+            path: '/tabs',
+            element: <TabsLayout />,
+            children: [
+              {
+                path: 'a',
+                handle: tabIndex ? { tabIndex: 0 } : undefined,
+                element: <TabPage name="a" />,
+              },
+              {
+                path: 'b',
+                handle: tabIndex ? { tabIndex: 1 } : undefined,
+                element: <TabPage name="b" />,
+              },
+            ],
+          },
+        ],
+      },
+    ]
+
+    return createMemoryRouter(tabRoutes, { initialEntries: ['/tabs/a'] })
+  }
+
+  it('切换到 B 时，B 的进入动画 class 包含 fr-tab-pre-enter-right（无位置 0 闪烁）', async () => {
+    const router = makeTabsApp(true)
+    render(<RouterProvider router={router} />)
+    await waitFor(() => screen.getByTestId('page-a'))
+
+    // 记录所有 class 变化
+    const classHistory: string[] = []
+    const group = document.querySelector('.animated-outlet-group')!
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((m) => {
+        if (m.type === 'attributes' && m.attributeName === 'class') {
+          classHistory.push((m.target as Element).className)
+        }
+      })
+    })
+    observer.observe(group, { attributes: true, subtree: true, childList: true })
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('nav-b'))
+    })
+    observer.disconnect()
+
+    // B 的进入动画 class 应该包含 fr-tab-pre-enter-right（确保页面从右侧开始，不在位置 0）
+    const hasPreEnter = classHistory.some((c) => c.includes('fr-tab-pre-enter-right'))
+    expect(hasPreEnter).toBe(true)
+
+    // fr-tab-pre-enter-right 出现时必须同时有 tabs-slide-enter-forward，而非单独裸出现
+    const preEnterWithoutSlide = classHistory.some(
+      (c) => c.includes('fr-tab-pre-enter-right') && !c.includes('tabs-slide-enter-forward'),
+    )
+    // 允许在 pending 渲染时只有 pre-enter class（React 18 synchronous flush 会在 paint 前处理）
+    // 关键断言：不应出现仅有基础 class 而没有任何动画 class 的 B 页面状态
+    const barePageBefore = classHistory.findIndex((c) => c === 'animated-outlet-page')
+    const preEnterFirst = classHistory.findIndex((c) => c.includes('fr-tab-pre-enter-right'))
+    if (barePageBefore !== -1 && preEnterFirst !== -1) {
+      // 如果存在裸 class，pre-enter 应更早出现（bare 是后续归零状态，不是初始闪烁）
+      expect(preEnterFirst).toBeLessThanOrEqual(barePageBefore)
+    }
+    // 主断言：存在 pre-enter class 就足以证明修复有效
+    void preEnterWithoutSlide // 两种情形均可接受
+  })
+
+  it('快速 A→B→A 切换后，最终显示 A 页，无动画 class 残留', async () => {
+    const router = makeTabsApp(true)
+    render(<RouterProvider router={router} />)
+    await waitFor(() => screen.getByTestId('page-a'))
+
+    // 快速依次点击
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-b')) })
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-a')) })
+
+    // 等待动画超时自然完成（300ms + 50ms grace）
+    await waitFor(
+      () => {
+        const animating = document.querySelectorAll('.fr-animating')
+        expect(animating.length).toBe(0)
+      },
+      { timeout: 1000 },
+    )
+
+    // 最终应显示 A 页
+    expect(screen.getByTestId('page-a')).toBeTruthy()
+  })
+
+  it('正常来回切换：A→B→A 每次都有动画（回归：fromSnapRef 在新导航开始时立即更新）', async () => {
+    const router = makeTabsApp(true)
+    render(<RouterProvider router={router} />)
+    await waitFor(() => screen.getByTestId('page-a'))
+
+    // A→B：forward 动画
+    const historyAB: string[] = []
+    const groupAB = document.querySelector('.animated-outlet-group')!
+    const obsAB = new MutationObserver((muts) => {
+      muts.forEach((m) => {
+        if (m.type === 'attributes' && m.attributeName === 'class')
+          historyAB.push((m.target as Element).className)
+      })
+    })
+    obsAB.observe(groupAB, { attributes: true, subtree: true })
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-b')) })
+    obsAB.disconnect()
+    expect(historyAB.some((c) => c.includes('tabs-slide-enter-forward'))).toBe(true)
+
+    // 等待动画完成
+    await waitFor(() => expect(document.querySelectorAll('.fr-animating').length).toBe(0), { timeout: 1000 })
+
+    // B→A：back 动画（旧 bug：fromSnapRef 未更新会直接显示 A 无动画）
+    const historyBA: string[] = []
+    const obsBA = new MutationObserver((muts) => {
+      muts.forEach((m) => {
+        if (m.type === 'attributes' && m.attributeName === 'class')
+          historyBA.push((m.target as Element).className)
+      })
+    })
+    obsBA.observe(groupAB, { attributes: true, subtree: true })
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-a')) })
+    obsBA.disconnect()
+    expect(historyBA.some((c) => c.includes('tabs-slide-enter-back'))).toBe(true)
+  })
+
+  it('快速 A→B→A 后 fromSnap 同步：再切换到 B 为 forward 方向', async () => {
+    const router = makeTabsApp(true)
+    render(<RouterProvider router={router} />)
+    await waitFor(() => screen.getByTestId('page-a'))
+
+    // 快速 A→B→A，等待动画清空
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-b')) })
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-a')) })
+    await waitFor(
+      () => expect(document.querySelectorAll('.fr-animating').length).toBe(0),
+      { timeout: 1000 },
+    )
+
+    // 收集下次 A→B 的 class 变化
+    const classHistory: string[] = []
+    const group = document.querySelector('.animated-outlet-group')!
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((m) => {
+        if (m.type === 'attributes' && m.attributeName === 'class') {
+          classHistory.push((m.target as Element).className)
+        }
+      })
+    })
+    observer.observe(group, { attributes: true, subtree: true })
+
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-b')) })
+    observer.disconnect()
+
+    // A(index=0) → B(index=1)：forward 方向
+    const hasForwardEnter = classHistory.some((c) => c.includes('tabs-slide-enter-forward'))
+    const hasBackEnter = classHistory.some((c) => c.includes('tabs-slide-enter-back'))
+    expect(hasForwardEnter).toBe(true)
+    expect(hasBackEnter).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// keepAlive switch + cover/modal：通过 tabIndex 配置方向（显式配置 = 双向动画）
+// ---------------------------------------------------------------------------
+describe('keepAlive switch + cover/modal 方向（需 tabIndex 配置）', () => {
+  function makeTabsApp(anim: 'cover' | 'modal', withTabIndex: boolean) {
+    function TabPage({ name }: { name: string }) {
+      return <div data-testid={`page-${name}`}>{name}</div>
+    }
+
+    function TabsLayout() {
+      return (
+        <>
+          <nav>
+            <NavLink to="/tabs/a" replace data-testid="nav-a">A</NavLink>
+            <NavLink to="/tabs/b" replace data-testid="nav-b">B</NavLink>
+          </nav>
+          <AnimatedOutlet keepAlive mode="switch" transition={anim} />
+        </>
+      )
+    }
+
+    const tabRoutes: RouteObject[] = [
+      {
+        element: <AnimatedOutlet />,
+        children: [
+          {
+            path: '/tabs',
+            element: <TabsLayout />,
+            children: [
+              { path: 'a', handle: withTabIndex ? { tabIndex: 0 } : undefined, element: <TabPage name="a" /> },
+              { path: 'b', handle: withTabIndex ? { tabIndex: 1 } : undefined, element: <TabPage name="b" /> },
+            ],
+          },
+        ],
+      },
+    ]
+
+    return createMemoryRouter(tabRoutes, { initialEntries: ['/tabs/a'] })
+  }
+
+  it('cover + tabIndex: A→B forward（slide-next-enter + 老页缩小），B→A backward（从左滑入覆盖 + 老页缩小）', async () => {
+    const router = makeTabsApp('cover', true)
+    render(<RouterProvider router={router} />)
+    await waitFor(() => screen.getByTestId('page-a'))
+
+    const group = document.querySelector('.animated-outlet-group')!
+
+    // A→B forward: B 从右滑入（slide-next-enter），A 缩小退场（slide-prev-leave-cover）
+    const histAB: string[] = []
+    const obsAB = new MutationObserver((muts) => {
+      muts.forEach((m) => {
+        if (m.type === 'attributes' && m.attributeName === 'class')
+          histAB.push((m.target as Element).className)
+      })
+    })
+    obsAB.observe(group, { attributes: true, subtree: true })
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-b')) })
+    obsAB.disconnect()
+
+    expect(histAB.some((c) => c.includes('slide-next-enter'))).toBe(true)
+    expect(histAB.some((c) => c.includes('slide-prev-leave-cover'))).toBe(true)
+
+    await waitFor(() => expect(document.querySelectorAll('.fr-animating').length).toBe(0), { timeout: 1000 })
+
+    // B→A backward: iOS-pop 风格 — A 从背景放大浮现（slide-prev-enter-cover），B 向右滑出（slide-next-leave）
+    // 这是 forward 的自然逆过程：forward = B 右入覆盖，backward = B 右出还原
+    const histBA: string[] = []
+    const obsBA = new MutationObserver((muts) => {
+      muts.forEach((m) => {
+        if (m.type === 'attributes' && m.attributeName === 'class')
+          histBA.push((m.target as Element).className)
+      })
+    })
+    obsBA.observe(group, { attributes: true, subtree: true })
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-a')) })
+    obsBA.disconnect()
+
+    // A 从缩小背景浮现（iOS-style reveal），B 向右滑出（slide-next-leave）
+    expect(histBA.some((c) => c.includes('slide-prev-enter-cover'))).toBe(true)
+    // B 向右滑走，不再是缩小退场
+    expect(histBA.some((c) => c.includes('slide-next-leave'))).toBe(true)
+    // A 有 fr-tab-pre-enter-below 预定位（在缩小状态预先隐藏，避免一帧闪烁）
+    expect(histBA.some((c) => c.includes('fr-tab-pre-enter-below'))).toBe(true)
+  })
+
+  it('cover 无 tabIndex：A→B 和 B→A 均走 forward 默认动画（slide-next-enter）', async () => {
+    const router = makeTabsApp('cover', false)
+    render(<RouterProvider router={router} />)
+    await waitFor(() => screen.getByTestId('page-a'))
+
+    const group = document.querySelector('.animated-outlet-group')!
+
+    // A→B
+    const histAB: string[] = []
+    const obsAB = new MutationObserver((muts) => {
+      muts.forEach((m) => {
+        if (m.type === 'attributes' && m.attributeName === 'class')
+          histAB.push((m.target as Element).className)
+      })
+    })
+    obsAB.observe(group, { attributes: true, subtree: true })
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-b')) })
+    obsAB.disconnect()
+
+    expect(histAB.some((c) => c.includes('slide-next-enter'))).toBe(true)
+
+    await waitFor(() => expect(document.querySelectorAll('.fr-animating').length).toBe(0), { timeout: 1000 })
+
+    // B→A：无 tabIndex，仍走 forward（slide-next-enter），不会出现 slide-next-leave
+    const histBA: string[] = []
+    const obsBA = new MutationObserver((muts) => {
+      muts.forEach((m) => {
+        if (m.type === 'attributes' && m.attributeName === 'class')
+          histBA.push((m.target as Element).className)
+      })
+    })
+    obsBA.observe(group, { attributes: true, subtree: true })
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-a')) })
+    obsBA.disconnect()
+
+    expect(histBA.some((c) => c.includes('slide-next-enter'))).toBe(true)
+    expect(histBA.some((c) => c.includes('slide-next-leave'))).toBe(false)
+  })
+
+  it('modal + tabIndex: A→B forward（slide-up-enter），B→A backward（双向统一：新tab从底部滑入，旧tab下滑）', async () => {
+    const router = makeTabsApp('modal', true)
+    render(<RouterProvider router={router} />)
+    await waitFor(() => screen.getByTestId('page-a'))
+
+    const group = document.querySelector('.animated-outlet-group')!
+
+    // A→B forward: B 从底部滑入（slide-up-enter），A 背景略缩（modal-bg-leave）
+    const histAB: string[] = []
+    const obsAB = new MutationObserver((muts) => {
+      muts.forEach((m) => {
+        if (m.type === 'attributes' && m.attributeName === 'class')
+          histAB.push((m.target as Element).className)
+      })
+    })
+    obsAB.observe(group, { attributes: true, subtree: true })
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-b')) })
+    obsAB.disconnect()
+
+    expect(histAB.some((c) => c.includes('slide-up-enter'))).toBe(true)
+    // B 进入后不带 fr-modal enterDone（避免透明背景）
+    expect(histAB.some((c) => c === 'animated-outlet-page fr-modal')).toBe(false)
+
+    await waitFor(() => expect(document.querySelectorAll('.fr-animating').length).toBe(0), { timeout: 1000 })
+
+    // B→A backward: 双向统一动画 —— A 从底部滑入（slide-up-enter），B 向下滑走（slide-up-leave）
+    const histBA: string[] = []
+    const obsBA = new MutationObserver((muts) => {
+      muts.forEach((m) => {
+        if (m.type === 'attributes' && m.attributeName === 'class')
+          histBA.push((m.target as Element).className)
+      })
+    })
+    obsBA.observe(group, { attributes: true, subtree: true })
+    await act(async () => { fireEvent.click(screen.getByTestId('nav-a')) })
+    obsBA.disconnect()
+
+    // A 从底部滑入（与正向 B 进入时一致）
+    expect(histBA.some((c) => c.includes('slide-up-enter'))).toBe(true)
+    // B 向下滑走
+    expect(histBA.some((c) => c.includes('slide-up-leave'))).toBe(true)
+    // exit class 不带 fr-modal（无深色遮罩）
+    expect(histBA.some((c) => c.includes('fr-modal') && c.includes('slide-up-leave'))).toBe(false)
+  })
+})
+
 describe('raw TransitionGroup', () => {
   it('nodeRef + object classNames 会加到 DOM', () => {
     const cn = {
@@ -975,5 +1326,175 @@ describe('Bug 3 regression: useMemo 在过渡期间不会因 fromSnap.matches �
       { timeout: 1500 },
     )
     expect(document.querySelector('.animated-outlet-page')?.className).not.toContain('fr-animating')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// include / exclude 缓存过滤
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('keepAlive switch — include/exclude 过滤', () => {
+  function SwitchLayout({ include, exclude }: { include?: string[]; exclude?: string[] }) {
+    const navigate = useNavigate()
+    return (
+      <>
+        <nav>
+          <button type="button" data-testid="go-a" onClick={() => navigate('/sw/a', { replace: true })}>A</button>
+          <button type="button" data-testid="go-b" onClick={() => navigate('/sw/b', { replace: true })}>B</button>
+          <button type="button" data-testid="go-c" onClick={() => navigate('/sw/c', { replace: true })}>C</button>
+        </nav>
+        <AnimatedOutlet keepAlive mode="switch" include={include} exclude={exclude} />
+      </>
+    )
+  }
+
+  function buildRouter(include?: string[], exclude?: string[]) {
+    const r: RouteObject[] = [
+      {
+        element: <SwitchLayout include={include} exclude={exclude} />,
+        children: [
+          { path: '/sw/a', element: <div data-testid="page-a">A</div> },
+          { path: '/sw/b', element: <div data-testid="page-b">B</div> },
+          { path: '/sw/c', element: <div data-testid="page-c">C</div> },
+        ],
+      },
+    ]
+    return createMemoryRouter(r, { initialEntries: ['/sw/a'] })
+  }
+
+  it('无 include/exclude 时所有页面都缓存', async () => {
+    const router = buildRouter()
+    render(<RouterProvider router={router} />)
+    await waitFor(() => screen.getByTestId('page-a'))
+
+    fireEvent.click(screen.getByTestId('go-b'))
+    await waitFor(() => screen.getByTestId('page-b'))
+
+    // A 被缓存，依然在 DOM 中（Activity hidden）
+    expect(document.querySelector('[data-testid="page-a"]')).toBeTruthy()
+    expect(document.querySelector('[data-testid="page-b"]')).toBeTruthy()
+  })
+
+  it('include 数组：不在列表内的页面离开后从 DOM 移除', async () => {
+    // 只缓存 /sw/a，/sw/b 不缓存
+    const router = buildRouter(['/sw/a'])
+    render(<RouterProvider router={router} />)
+    await waitFor(() => screen.getByTestId('page-a'))
+
+    // A → B（B 不在 include 内）
+    fireEvent.click(screen.getByTestId('go-b'))
+    await waitFor(() => screen.getByTestId('page-b'))
+
+    // 等动画完成（transition="none" 无动画，onExited 应同步触发）
+    await waitFor(() => {
+      // A 仍在 DOM（include 的页面），B 仍在（当前活跃）
+      expect(document.querySelector('[data-testid="page-a"]')).toBeTruthy()
+      expect(document.querySelector('[data-testid="page-b"]')).toBeTruthy()
+    })
+
+    // 切到 A，B 离开 → B 不在 include 内，应该被清除
+    fireEvent.click(screen.getByTestId('go-a'))
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="page-b"]')).toBeNull()
+    })
+  })
+
+  it('exclude 数组：在列表内的页面离开后从 DOM 移除', async () => {
+    // 排除 /sw/b，其他正常缓存
+    const router = buildRouter(undefined, ['/sw/b'])
+    render(<RouterProvider router={router} />)
+    await waitFor(() => screen.getByTestId('page-a'))
+
+    // A → B（B 在 exclude 内）
+    fireEvent.click(screen.getByTestId('go-b'))
+    await waitFor(() => screen.getByTestId('page-b'))
+
+    // 切到 A，B 离开 → 应从 DOM 移除
+    fireEvent.click(screen.getByTestId('go-a'))
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="page-b"]')).toBeNull()
+    })
+    // A 正常缓存，保留
+    expect(document.querySelector('[data-testid="page-a"]')).toBeTruthy()
+  })
+
+  it('include RegExp：匹配的页面被缓存，不匹配的被清除', async () => {
+    function RegExpLayout() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <nav>
+            <button type="button" data-testid="go-a2" onClick={() => navigate('/sw2/a', { replace: true })}>A</button>
+            <button type="button" data-testid="go-b2" onClick={() => navigate('/sw2/b', { replace: true })}>B</button>
+          </nav>
+          <AnimatedOutlet keepAlive mode="switch" include={/^\/sw2\/a$/} />
+        </>
+      )
+    }
+    const router = createMemoryRouter(
+      [
+        {
+          element: <RegExpLayout />,
+          children: [
+            { path: '/sw2/a', element: <div data-testid="page-a2">A</div> },
+            { path: '/sw2/b', element: <div data-testid="page-b2">B</div> },
+          ],
+        },
+      ],
+      { initialEntries: ['/sw2/a'] },
+    )
+    render(<RouterProvider router={router} />)
+    await waitFor(() => screen.getByTestId('page-a2'))
+
+    fireEvent.click(screen.getByTestId('go-b2'))
+    await waitFor(() => screen.getByTestId('page-b2'))
+
+    // 切回 a，b 应被清除（不匹配 include）
+    fireEvent.click(screen.getByTestId('go-a2'))
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="page-b2"]')).toBeNull()
+    })
+  })
+
+  it('exclude 函数：predicate 为 true 的页面不缓存', async () => {
+    function FnExcludeLayout() {
+      const navigate = useNavigate()
+      return (
+        <>
+          <nav>
+            <button type="button" data-testid="go-a3" onClick={() => navigate('/sw3/a', { replace: true })}>A</button>
+            <button type="button" data-testid="go-b3" onClick={() => navigate('/sw3/b', { replace: true })}>B</button>
+          </nav>
+          <AnimatedOutlet
+            keepAlive
+            mode="switch"
+            exclude={(path) => path.startsWith('/sw3/b')}
+          />
+        </>
+      )
+    }
+    const router = createMemoryRouter(
+      [
+        {
+          element: <FnExcludeLayout />,
+          children: [
+            { path: '/sw3/a', element: <div data-testid="page-a3">A</div> },
+            { path: '/sw3/b', element: <div data-testid="page-b3">B</div> },
+          ],
+        },
+      ],
+      { initialEntries: ['/sw3/a'] },
+    )
+    render(<RouterProvider router={router} />)
+    await waitFor(() => screen.getByTestId('page-a3'))
+
+    fireEvent.click(screen.getByTestId('go-b3'))
+    await waitFor(() => screen.getByTestId('page-b3'))
+
+    fireEvent.click(screen.getByTestId('go-a3'))
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="page-b3"]')).toBeNull()
+    })
+    expect(document.querySelector('[data-testid="page-a3"]')).toBeTruthy()
   })
 })

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   animPresetRegistry,
@@ -276,6 +276,41 @@ describe('planTransition', () => {
       'fade',
     )
     expect(pop.classNames.exitActive).toBe('slide-up-leave')
+  })
+})
+
+describe('presetOf — 未知动画类型警告', () => {
+  it('使用未注册的 type 时触发 console.warn', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    classNamesFor('PUSH', 'cover', 'typo-anim' as never)
+    expect(warn).toHaveBeenCalledOnce()
+    expect(warn.mock.calls[0][0]).toContain('typo-anim')
+    expect(warn.mock.calls[0][0]).toContain('react-router-dom-animate')
+    warn.mockRestore()
+  })
+
+  it('未知 type 回退为 cover 动画（不崩溃）', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const cn = classNamesFor('PUSH', 'cover', 'non-existent' as never)
+    expect(cn.enterActive).toBe('slide-next-enter') // cover forward 的 enterActive
+    warn.mockRestore()
+  })
+
+  it('planTransition fallback 为未知 type 时也会警告并正常返回 plan', () => {
+    // state.transition 会被 parseRouteAnim 过滤（未注册则忽略），
+    // 但直接用未知 type 作为 fallback 会透传到 presetOf。
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const plan = planTransition(
+      'PUSH',
+      snap('/a'),
+      snap('/b'),        // 无 state/handle，resolveAnim 返回 fallback
+      'unknown-fallback' as never,
+    )
+    expect(warn).toHaveBeenCalled()
+    expect(warn.mock.calls[0][0]).toContain('unknown-fallback')
+    // 回退为 cover，动画正常
+    expect(plan.classNames.enterActive).toBeTruthy()
+    warn.mockRestore()
   })
 })
 

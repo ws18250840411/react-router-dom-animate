@@ -37,7 +37,7 @@ import {
   unregisterPageAnim,
   IDLE,
 } from './transition'
-import type { ClassNames, KeepAliveRef, OutletMode, RouteAnimType, RouteSnapshot, TransitionPlan } from './types'
+import type { ClassNames, KeepAliveFilter, KeepAliveRef, OutletMode, RouteAnimType, RouteSnapshot, TransitionPlan } from './types'
 
 export interface AnimatedOutletProps {
   transition?: RouteAnimType
@@ -63,6 +63,32 @@ export interface AnimatedOutletProps {
    */
   max?: number
   /**
+   * Allow-list: only pathnames matching this filter are cached.
+   * Pages not matched will still render while active, but are discarded when
+   * navigating away (not preserved in Activity).
+   *
+   * Only applies when `keepAlive={true}` and `mode="switch"`.
+   *
+   * @example
+   * // cache only the three tab roots
+   * <AnimatedOutlet keepAlive mode="switch" include={['/home', '/profile', '/settings']} />
+   * // cache all pages under /tabs/
+   * <AnimatedOutlet keepAlive mode="switch" include={/^\/tabs\//} />
+   */
+  include?: KeepAliveFilter
+  /**
+   * Deny-list: pathnames matching this filter are NOT cached (evicted on exit).
+   * All other pages are cached as normal.
+   *
+   * Only applies when `keepAlive={true}` and `mode="switch"`.
+   *
+   * @example
+   * // never cache one-time pages like forms or confirmation screens
+   * <AnimatedOutlet keepAlive mode="switch" exclude={['/checkout', '/payment']} />
+   * <AnimatedOutlet keepAlive mode="switch" exclude={(path) => path.startsWith('/form')} />
+   */
+  exclude?: KeepAliveFilter
+  /**
    * Imperative handle for cache control. Only applies when `keepAlive` and `mode="switch"`.
    * After mount, `aliveRef.current` exposes `remove`, `removeAll`, and `getCached`.
    *
@@ -83,7 +109,6 @@ const FrozenContext = createContext(false)
 
 function pageTransitionKey(
   mode: OutletMode,
-  _depth: number,
   matches: UIMatch[],
   pathname: string,
   locationKey: string,
@@ -168,6 +193,13 @@ function PageTransition({
 
 const PageActiveContext = createContext<string | null>(null)
 
+/** Extract the initial-position class (fr-tab-pre-enter-*) from a CSSTransition enter className string. */
+function extractPreEnterClass(enterClass: string | undefined): string {
+  if (!enterClass) return ''
+  const match = /\bfr-tab-pre-enter-\S+/.exec(enterClass)
+  return match ? match[0] : ''
+}
+
 /**
  * PUSH navigation keeps the exiting page alive via `<Activity mode="hidden">` after
  * its exit animation completes. POP switches it back to `mode="visible"` and plays
@@ -194,17 +226,20 @@ function BackgroundPreserveRoot({
   const isFrozen = useContext(FrozenContext)
 
   const fallback = layoutTransition ?? 'cover'
-  const pageKey = pageTransitionKey('stack', depth, matches, location.pathname, location.key)
+  const pageKey = pageTransitionKey('stack', matches, location.pathname, location.key)
 
   const fromSnapRef = useRef<RouteSnapshot>(snap(location, matches))
   const toSnapRef = useRef<RouteSnapshot>(snap(location, matches))
   const lastToKeyRef = useRef(location.key)
   if (lastToKeyRef.current !== location.key) {
+    // Capture "from" as the last destination before updating "to".
+    // This ensures rapid A→B→A navigation (B animation interrupted) still
+    // computes the correct B→A direction instead of treating it as A→A (IDLE).
+    fromSnapRef.current = toSnapRef.current
     lastToKeyRef.current = location.key
     toSnapRef.current = snap(location, matches)
   }
   const [settledLocation, setSettledLocation] = useState(location)
-  if (settledLocation.key === location.key) fromSnapRef.current = toSnapRef.current
   const locationRef = useRef(location)
   locationRef.current = location
   const settledKeyRef = useRef(settledLocation.key)
@@ -226,7 +261,6 @@ function BackgroundPreserveRoot({
   useLayoutEffect(() => {
     if (settledLocation.key === location.key) return
     if (activePlan.duration <= 0) {
-      if (settledLocation.pathname === location.pathname) return
       commitSettled()
       return
     }
@@ -316,8 +350,16 @@ function BackgroundPreserveRoot({
       )
     } else if (navType === 'PUSH') {
       // True stack push: navigating to a different depth/layout page (different stableKey).
+      // Hide all entries below the current top (which becomes second after PUSH) so they
+      // don't show through during the animation and don't waste render budget.
+      const updatedStack = stackRef.current.map((e, i, arr) =>
+        i < arr.length - 1 ? { ...e, activityMode: 'hidden' as const } : e,
+      )
+      // Filter out zombie entries (alive=false) with the same stableKey. These are left
+      // behind after a POP and would create duplicate React keys if not removed before PUSH.
+      const deduped = updatedStack.filter(e => !(e.stableKey === stableKey && !e.alive))
       stackRef.current = [
-        ...stackRef.current,
+        ...deduped,
         { locKey, stableKey, outlet, locCtx, nodeRef: getNodeRef(stableKey), alive: true, activityMode: 'visible' },
       ]
       // Two-render trick: first paint with in={false} so CSSTransition starts in
@@ -334,6 +376,9 @@ function BackgroundPreserveRoot({
         ...stackRef.current.slice(0, -1),
         { locKey, stableKey, outlet, locCtx, nodeRef: getNodeRef(stableKey), alive: true, activityMode: 'visible' },
       ]
+      // Same two-render trick as PUSH so the entering page's CSSTransition starts in
+      // "exited" state and the enter animation plays correctly.
+      pendingEnterRef.current.add(stableKey)
     }
   } else if (!isFrozen) {
     // When frozen (inside an alive=false exiting entry), skip outlet/locCtx updates so
@@ -398,10 +443,15 @@ function BackgroundPreserveRoot({
               mountOnEnter={false}
               unmountOnExit={!entry.alive}
               onExited={() => {
-                if (!entry.alive) {
-                  stackRef.current = stackRef.current.filter(e => e.stableKey !== entry.stableKey)
-                  nodeRefsCache.current.delete(entry.stableKey)
-                  bgScrollsRef.current.delete(entry.stableKey)
+                // Look up the entry's current alive status from stackRef (not the render closure)
+                // to avoid stale values when rapid navigation re-activates the page before its
+                // exit animation finishes.
+                const stableKey = entry.stableKey
+                const current = stackRef.current.find(e => e.stableKey === stableKey)
+                if (!current || !current.alive) {
+                  stackRef.current = stackRef.current.filter(e => e.stableKey !== stableKey)
+                  nodeRefsCache.current.delete(stableKey)
+                  bgScrollsRef.current.delete(stableKey)
                   forceRender()
                 } else {
                   // Save scroll before display:none resets scrollTop, then go hidden.
@@ -413,10 +463,10 @@ function BackgroundPreserveRoot({
                         scrollables.push([el, el.scrollTop, el.scrollLeft])
                       }
                     })
-                    bgScrollsRef.current.set(entry.stableKey, scrollables)
+                    bgScrollsRef.current.set(stableKey, scrollables)
                   }
                   stackRef.current = stackRef.current.map(e =>
-                    e.stableKey === entry.stableKey ? { ...e, activityMode: 'hidden' as const } : e,
+                    e.stableKey === stableKey ? { ...e, activityMode: 'hidden' as const } : e,
                   )
                   forceRender()
                 }
@@ -445,6 +495,25 @@ function BackgroundPreserveRoot({
   )
 }
 
+/** Returns true if `pathname` matches the given filter. */
+function matchFilter(pathname: string, filter: KeepAliveFilter): boolean {
+  if (Array.isArray(filter)) return filter.includes(pathname)
+  if (filter instanceof RegExp) return filter.test(pathname)
+  return filter(pathname)
+}
+
+/**
+ * Returns true if the page at `pathname` should be kept in the Activity cache.
+ * When `include` is set, only matching pages are cached.
+ * When `exclude` is set, matching pages are discarded on exit.
+ * If neither is set, all pages are cached.
+ */
+function shouldCache(pathname: string, include: KeepAliveFilter | undefined, exclude: KeepAliveFilter | undefined): boolean {
+  if (include !== undefined && !matchFilter(pathname, include)) return false
+  if (exclude !== undefined && matchFilter(pathname, exclude)) return false
+  return true
+}
+
 /**
  * Implements `keepAlive={true}` for `<AnimatedOutlet>`.
  *
@@ -464,11 +533,15 @@ function BackgroundPreserveRoot({
  */
 function KeepAliveRoot({
   max,
+  include,
+  exclude,
   aliveRef,
   layoutTransition,
   className,
 }: {
   max?: number
+  include?: KeepAliveFilter
+  exclude?: KeepAliveFilter
   aliveRef?: RefObject<KeepAliveRef | undefined>
   layoutTransition?: RouteAnimType
   className?: string
@@ -509,11 +582,11 @@ function KeepAliveRoot({
   const toSnapRef = useRef<RouteSnapshot>(snap(location, matches))
   const lastToKeyRef = useRef(location.key)
   if (lastToKeyRef.current !== location.key) {
+    fromSnapRef.current = toSnapRef.current
     lastToKeyRef.current = location.key
     toSnapRef.current = snap(location, matches)
   }
   const [settledLocation, setSettledLocation] = useState(location)
-  if (settledLocation.key === location.key) fromSnapRef.current = toSnapRef.current
   const locationRef = useRef(location)
   locationRef.current = location
   const settledKeyRef = useRef(settledLocation.key)
@@ -538,7 +611,9 @@ function KeepAliveRoot({
   useLayoutEffect(() => {
     if (settledLocation.key === location.key) return
     if (activePlan.duration <= 0) {
-      if (settledLocation.pathname === location.pathname) return
+      // Always sync settledLocation even when same pathname (different key).
+      // Skipping this caused fromSnapRef to go stale after rapid A→B→A navigation,
+      // which in turn produced wrong animation directions on subsequent navigations.
       commitSettled()
       return
     }
@@ -548,9 +623,13 @@ function KeepAliveRoot({
 
   snapshotsRef.current.set(pageKey, { outlet, locCtx })
 
+  // Track whether the active page changed so we know when to apply the two-render trick.
+  const prevPageKeyRef = useRef('')
+  const isPageKeyChanged = prevPageKeyRef.current !== pageKey
+  prevPageKeyRef.current = pageKey
+
   // Move current key to tail (most-recently-used).
-  const isNewPage = !keysRef.current.includes(pageKey)
-  if (!isNewPage) {
+  if (keysRef.current.includes(pageKey)) {
     keysRef.current = keysRef.current.filter((k) => k !== pageKey)
   }
   keysRef.current = [...keysRef.current, pageKey]
@@ -558,8 +637,10 @@ function KeepAliveRoot({
   // Make the new page Activity visible immediately (needed before enter animation).
   activityModesRef.current.set(pageKey, 'visible')
 
-  if (isNewPage) {
+  if (isPageKeyChanged) {
     // Two-render trick: start with in=false so CSSTransition starts in "exited" state.
+    // Apply to ALL page switches (new pages and cached pages returning from Activity hidden)
+    // so enter and exit animations always start simultaneously on the second render.
     pendingEnterRef.current.add(pageKey)
   }
 
@@ -614,6 +695,31 @@ function KeepAliveRoot({
     }
   })
 
+  // Rapid-nav cleanup: when an animation is interrupted (duration=0, e.g. rapid A→B→A),
+  // immediately hide all non-active pages that are still visible. This prevents the
+  // one-frame flash that occurs when CSSTransition removes animation classes from an
+  // interrupted page, causing it to snap back to position 0 before Activity hides it.
+  // Runs before browser paint (useLayoutEffect) so the flash is never visible.
+  useLayoutEffect(() => {
+    if (activePlan.duration > 0) return
+    let changed = false
+    activityModesRef.current.forEach((mode, key) => {
+      if (key !== pageKey && mode === 'visible') {
+        if (!shouldCache(key, include, exclude)) {
+          keysRef.current = keysRef.current.filter((k) => k !== key)
+          snapshotsRef.current.delete(key)
+          scrollCacheRef.current.delete(key)
+          activityModesRef.current.delete(key)
+          nodeRefsRef.current.delete(key)
+        } else {
+          activityModesRef.current.set(key, 'hidden')
+        }
+        changed = true
+      }
+    })
+    if (changed) forceRender()
+  })
+
   useLayoutEffect(() => {
     if (!aliveRef) return
     aliveRef.current = {
@@ -656,7 +762,15 @@ function KeepAliveRoot({
         const activityMode = activityModesRef.current.get(key) ?? 'visible'
         const nodeRef = getKARNodeRef(key)
         // First paint of new page uses in=false; useLayoutEffect flips to in=true.
-        const inProp = isActive && !pendingEnterRef.current.has(key)
+        const isPendingEnter = pendingEnterRef.current.has(key)
+        const inProp = isActive && !isPendingEnter
+        // While a page is pending its enter animation (in=false), it's visible in the DOM
+        // at its default position (transform: 0). Apply the pre-enter position class from
+        // classNames.enter so it starts off-screen (e.g. translate3d(100%, 0, 0)).
+        // This prevents the one-frame flash at position 0 before the animation begins.
+        // React 18 useLayoutEffect → forceRender runs synchronously before browser paint,
+        // so the page is at the correct off-screen position by the time the browser paints.
+        const preEnterClass = isPendingEnter ? extractPreEnterClass(activePlan.classNames.enter) : ''
         return (
           <Activity key={key} mode={activityMode}>
             <CSSTransition
@@ -667,14 +781,25 @@ function KeepAliveRoot({
               mountOnEnter={false}
               unmountOnExit={false}
               onExited={() => {
-                if (!isActive) {
-                  // Delay Activity hidden until after exit animation to avoid display:none clipping.
-                  activityModesRef.current.set(key, 'hidden')
+                // Use ref instead of closure `isActive` to avoid stale value when the
+                // page becomes active again before its exit animation finishes (e.g. rapid B→A→B).
+                if (key !== pageKeyRef.current) {
+                  if (!shouldCache(key, include, exclude)) {
+                    // Non-cacheable: remove entirely so next visit re-mounts fresh.
+                    keysRef.current = keysRef.current.filter((k) => k !== key)
+                    snapshotsRef.current.delete(key)
+                    scrollCacheRef.current.delete(key)
+                    activityModesRef.current.delete(key)
+                    nodeRefsRef.current.delete(key)
+                  } else {
+                    // Delay Activity hidden until after exit animation to avoid display:none clipping.
+                    activityModesRef.current.set(key, 'hidden')
+                  }
                   forceRender()
                 }
               }}
             >
-              <div ref={nodeRef} className="animated-outlet-page">
+              <div ref={nodeRef} className={preEnterClass ? `animated-outlet-page ${preEnterClass}` : 'animated-outlet-page'}>
                 <PageActiveContext.Provider value={pageKey}>
                   <UNSAFE_LocationContext.Provider value={pageSnap.locCtx as never}>
                     {pageSnap.outlet}
@@ -784,7 +909,7 @@ function AnimatedRoot({
   const mode = resolveOutletMode(modeProp, matches, location.state)
   const tabs = mode === 'switch'
   const fallback = layoutTransition ?? (tabs ? 'none' : 'cover')
-  const pageKey = pageTransitionKey(mode, depth, matches, location.pathname, location.key)
+  const pageKey = pageTransitionKey(mode, matches, location.pathname, location.key)
 
   // Snapshot pageKey on location.key change only: useMatches() reads the global
   // router state (not frozen by UNSAFE_LocationContext), so inside a keepBackground
@@ -807,12 +932,9 @@ function AnimatedRoot({
   const lastToKeyRef = useRef(location.key)
 
   if (lastToKeyRef.current !== location.key) {
+    fromSnapRef.current = toSnapRef.current
     lastToKeyRef.current = location.key
     toSnapRef.current = snap(location, matches)
-  }
-
-  if (settledLocation.key === location.key) {
-    fromSnapRef.current = toSnapRef.current
   }
 
   const activePlan: TransitionPlan = useMemo(() => {
@@ -848,7 +970,6 @@ function AnimatedRoot({
   useLayoutEffect(() => {
     if (settledLocation.key === location.key) return
     if (activePlan.duration <= 0) {
-      if (settledLocation.pathname === location.pathname) return
       commitSettled()
       return
     }
@@ -888,6 +1009,8 @@ export default function AnimatedOutlet({
   transition,
   keepAlive: keepAliveProp,
   max,
+  include,
+  exclude,
   aliveRef,
   mode,
   className,
@@ -915,7 +1038,7 @@ export default function AnimatedOutlet({
       return (
         <DepthContext.Provider value={depth + 1}>
           {transition ? <LayoutScopeRegistrar transition={transition} /> : null}
-          <KeepAliveRoot max={max} aliveRef={aliveRef} layoutTransition={transition} className={className} />
+          <KeepAliveRoot max={max} include={include} exclude={exclude} aliveRef={aliveRef} layoutTransition={transition} className={className} />
         </DepthContext.Provider>
       )
     }

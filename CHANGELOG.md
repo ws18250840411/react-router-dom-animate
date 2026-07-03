@@ -5,7 +5,81 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased] — 2026-07-01
+## [1.0.0] — 2026-07-03
+
+### Fixed
+
+#### `BackgroundPreserveRoot` zombie entry 导致重复 React key
+
+- **根因**：POP 时，退出动画中的条目（`alive=false`，stableKey 为 `X_2`）以 `[zombie, restored-root]` 顺序保留在 `stackRef` 中。若在退出动画完成前再次 PUSH 同一 stableKey（`X_2`）的新页面，PUSH 逻辑会在已有 zombie 的基础上追加新条目，导致两条 stableKey 相同的记录同时存在，React TransitionGroup 报重复 key 错误（`Encountered two children with the same key`），页面内容无法正常切换。
+- **修复**：在 PUSH 分支中，先过滤掉所有与目标 `stableKey` 相同的 zombie entries（`alive=false`），再追加新条目，彻底消除重复 key 问题。
+
+#### `keepAlive mode="switch" transition="slide"` tab 动画丝滑性改进
+
+- **消除进入动画的位置 0 闪烁**：新页面进入时，两个渲染阶段（两帧 trick）期间引入了 `fr-tab-pre-enter-right` / `fr-tab-pre-enter-left` 初始位置 class，确保页面在 `enter` 阶段（CSSTransition 应用动画前的 RAF 间隙）始终保持在屏幕外（translate3d ±100%），而非短暂出现在位置 0 导致的视觉抖动。
+- **快速多次点击无残留动画**：新增 `useLayoutEffect` 快速导航清理逻辑：当 `activePlan.duration === 0`（动画被打断、相同路径导航）时，在浏览器绘制前立即将所有非活动的可见页面设为 Activity `'hidden'`，防止被打断的进入动画 class 被移除后页面闪现在位置 0 再消失。
+- **更流畅的缓动曲线**：为 tab 滑动动画新增专属 CSS 变量 `--fr-ease-tab`（默认 `cubic-bezier(0.4, 0, 0.2, 1)`，Material Design 标准）。所有 `tabs-slide-*` 动画类均应用此变量，替代原有的全局 `--fr-ease`，起速更快、收尾更平滑。
+- **修复快速切换后动画方向错误**：三个组件（`AnimatedRoot`、`BackgroundPreserveRoot`、`KeepAliveRoot`）中移除了"相同 pathname 不调用 `commitSettled`"的早返回逻辑。该逻辑导致 A→B→A 快速切换后 `fromSnapRef` 过期，下一次导航方向判断（`tabIndex` 比较）出错。现在任何 `activePlan.duration === 0` 的情形都会及时同步 `settledLocation`。
+- **修复"有时无动画"问题**：`fromSnapRef` 的更新时机从"动画完成后（`settledLocation.key === location.key`）"改为"每次新导航开始时（`lastToKeyRef !== location.key`）"。旧逻辑下，若 A→B 动画未完成就发起 B→A 导航，`fromSnapRef` 仍指向 A，导致 `planTransition(from=A, to=A)` 返回 `IDLE`（同路径判断），页面直接切换无动画。新逻辑始终将前次导航的目标（`toSnapRef.current`）作为下次导航的起点，无论动画是否完成，方向判断恒正确。
+- **`KeepAliveRoot.onExited` 闭包修复**：`onExited` 中判断是否隐藏页面改为读取 `pageKeyRef.current`（ref）而非渲染闭包的 `isActive`，避免页面在退出动画期间重新变为激活状态时被错误 hidden。
+- **`BackgroundPreserveRoot` 多项修复**：
+  - REPLACE 导航到不同 `stableKey` 的页面现在也走 `pendingEnterRef` two-render trick，进入动画正常播放。
+  - PUSH 新页面时，将 3 层及以上的非 top/second 条目立即设为 `Activity mode="hidden"`，防止深层页面在动画期间漏出。
+  - `onExited` 回调改为从 `stackRef.current` 实时查询条目的 `alive` 状态（而非闭包），避免快速导航中旧 exit 动画完成时错误地 hidden 已重新激活的页面。
+
+### Tests
+
+- **新增 `keepAlive stack` 单元测试**（`src/__tests__/keepalive-stack.test.tsx`，9 个）：覆盖 `BackgroundPreserveRoot` 基础 PUSH→POP 状态保留、动画 class 出现、快速 PUSH/POP、REPLACE 动画（Bug #4 回归）、`fromSnapRef` 方向正确性（Bug #1 回归）。
+- **新增 `keepAlive stack` E2E 测试**（`demo/e2e/keepalive-stack.spec.ts`，11 个）：覆盖浏览器中 cover 动画触发验证、快速 PUSH/POP 无残留节点、状态保留、fromSnapRef 多轮往返动画均有效。
+- **新增 slide 动画方向回归 E2E 测试**（`demo/e2e/stress.spec.ts`，2 个）：验证 A→B→A→B 每轮切换均有 `fr-animating` class，以及 10 轮快速往返动画方向始终正确（"有时无动画" Bug #1 回归）。
+
+---
+
+## [1.0.0] — 2026-07-03（续）
+
+### Added
+
+#### `keepAlive mode="switch"` 新增 `include` / `exclude` 缓存过滤 props
+
+类比 Vue `<KeepAlive :include :exclude>`，允许按路由 pathname 精细控制哪些页面应被保留在 Activity 缓存中：
+
+- **`include`**：白名单，仅匹配的页面在离开时保留在缓存；不匹配的页面退出后立即销毁，下次进入重新 mount。
+- **`exclude`**：黑名单，匹配的页面退出后立即销毁；其他页面正常缓存。
+- 支持三种过滤形式：`string[]`（精确路径）、`RegExp`（正则）、`(pathname: string) => boolean`（函数谓词）。
+- `include` 与 `exclude` 可同时使用，优先级：先过白名单 → 再过黑名单。
+
+```tsx
+// 只缓存 Tab 根页面
+<AnimatedOutlet keepAlive mode="switch" include={['/home', '/profile', '/settings']} />
+
+// 不缓存一次性流程页
+<AnimatedOutlet keepAlive mode="switch" exclude={(path) => path.startsWith('/wizard')} />
+```
+
+**新增导出**：`KeepAliveFilter` 类型从 `react-router-dom-animate` 包导出。
+
+#### `TabPreset` 接口与通用 tab 动画
+
+- 为 `AnimPreset` 新增可选 `tab?: TabPreset` 字段，描述 `keepAlive mode="switch"` 场景下的方向性动画变体（`forward`、`back`、`undirected`、`bidirectional`）。
+- 内置预设（`cover`、`slide`、`fade`、`scale`、`modal`、`none`）全部补充 `tab` 字段。
+- `classNamesForTabs` 函数完全重写为通用逻辑，通过 `preset.tab` 驱动，消除对具体动画类型的硬编码判断。
+- 新增 CSS 预定位 class `fr-tab-pre-enter-scale` / `fr-tab-pre-enter-fade`，防止 `scale` / `fade` 动画在 keepAlive tab 模式下首帧闪烁。
+
+### Fixed
+
+- `presetOf`：使用未注册的动画类型时新增 `console.warn` 提示，不再静默降级。
+- `warmDurationMs`：由硬编码类型列表改为动态遍历 `animPresetRegistry.types()`，自定义 preset 的 `durationMs` 现在也会被正确预热。
+- `slide.tab.undirected`：修正为 `TAB_FADE_FORWARD`（含预定位 class），避免无 `tabIndex` 时闪烁。
+- 移除死代码 `TAB_MODAL_POP`。
+
+### Tests
+
+- **新增 `presetOf` 未知类型警告单元测试**（`src/__tests__/transition.test.ts`，3 个）：覆盖通过 `classNamesFor`、`planTransition` fallback 触发警告，以及回退 cover 动画正常的场景。
+- **新增 `keepAlive switch include/exclude` 单元测试**（`src/__tests__/outlet.test.tsx`，5 个）：覆盖 `string[]`、`RegExp`、函数谓词三种过滤形式，以及 `include`+`exclude` 组合。
+- **新增 scale / fade tab 动画 E2E 测试**（`demo/e2e/keepalive-switch-cover.spec.ts`，5 个）：验证 `scale`、`fade` 在 keepAlive switch 模式下 forward/backward 动画均有 `fr-animating` class，state 保留，无 JS 错误，快速连点无残留。
+- **新增 include/exclude E2E 测试**（`demo/e2e/keepalive-switch-filter.spec.ts`，4 个）：在真实浏览器中验证 `exclude` prop 行为——被排除的页面（Tab B）离开后 DOM 移除、再次进入 state 重置（新实例 mount）；未排除的页面（Tab A/C）state 正常保留。同时新增 `/keep-alive-filter` demo 路由以支持 E2E 场景。
+
+## [1.0.0] — 2026-07-01（初稿，合并至 1.0.0）
 
 ### Breaking Changes
 
@@ -253,3 +327,7 @@ useDeactivated(() => cleanup())   // 页面离开时触发（非 keepAlive 时 =
 - **README.md** — 新增两节：  
   「tabs slide 必须配 `tabIndex`」使用说明；  
   「自定义动画时长 — per-preset `durationMs`」用法示例。
+
+---
+
+*1.0.0 是首个正式发布版本，包含完整的 keepAlive stack/switch 实现、通用 TabPreset 动画系统、include/exclude 缓存过滤、115 个单元测试和多套 E2E 测试套件。*

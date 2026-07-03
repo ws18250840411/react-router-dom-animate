@@ -76,7 +76,7 @@ function readTypedDurationMs(type: RouteAnimType): number {
  */
 export function warmDurationMs(): void {
   readDurationMs()
-  for (const type of ['cover', 'slide', 'fade', 'scale', 'modal', 'none'] as RouteAnimType[]) {
+  for (const type of animPresetRegistry.types()) {
     readTypedDurationMs(type)
   }
 }
@@ -114,10 +114,8 @@ export function registerAnimPreset(preset: AnimPreset): void {
  *   setAnimDuration('slide', 250)
  */
 export function setAnimDuration(type: RouteAnimType, ms: number): void {
-  // Update the preset entry if it was registered via registerAnimPreset
   const existing = presets.get(type)
   if (existing) presets.set(type, { ...existing, durationMs: ms })
-  // Always update the typed cache so non-preset types are also covered
   typedDurationCache.set(type, ms)
 }
 
@@ -140,6 +138,49 @@ const COVER_BACK: ClassNames = {
   exitActive: 'slide-next-leave',
 }
 
+// Tab-aware cover preset: pre-positions entering page off-screen to avoid the
+// one-frame flash at position 0 before slide-next-enter kicks in (KeepAliveRoot
+// uses mountOnEnter=false so the page is in the DOM during the two-render trick).
+const TAB_COVER_FORWARD: ClassNames = {
+  enter: `${BASE} fr-tab-pre-enter-right`,
+  enterActive: 'slide-next-enter',
+  exit: BASE,
+  exitActive: 'slide-prev-leave-cover',
+}
+
+// Tab-aware cover backward (iOS-style pop): entering page (lower index, e.g. "home")
+// emerges from the scaled background while the exiting page slides off to the right.
+// This is the natural reverse of TAB_COVER_FORWARD:
+//   forward  = entering page covers  (slides in from right, exit scales to bg)
+//   backward = entering page reveals (emerges from bg, exit slides to right)
+// fr-tab-pre-enter-below pre-positions the entering page at the same scaled/faded
+// state as the slide-prev-enter-cover animation's from-keyframe to avoid a one-frame
+// flash in keepAlive mode where the page is always in the DOM.
+const TAB_COVER_BACK: ClassNames = {
+  enter: `${BASE} fr-enter-below fr-tab-pre-enter-below`,
+  enterActive: 'slide-prev-enter-cover',
+  exit: BASE,
+  exitActive: 'slide-next-leave',
+}
+
+// Tab-aware modal: used for ALL modal tab switches (both forward and backward).
+// New tab always slides UP from the bottom; old tab always slides DOWN off-screen.
+// This gives clear, consistent double-sided animation for every tab switch, so every
+// menu item visibly animates regardless of navigation direction.
+// enterDone is intentionally empty (not 'fr-modal') so the tab page stays fully opaque
+// after animation — fr-modal:not(.fr-animating) makes the page background transparent,
+// which is correct for overlay modals in stack mode but wrong for full-content tab pages.
+const TAB_MODAL_PUSH: ClassNames = {
+  appear: `${BASE} fr-modal fr-tab-pre-enter-bottom`,
+  appearActive: 'slide-up-enter',
+  appearDone: '',
+  enter: `${BASE} fr-modal fr-tab-pre-enter-bottom`,
+  enterActive: 'slide-up-enter',
+  enterDone: '',
+  exit: BASE,
+  exitActive: 'slide-up-leave',
+}
+
 const SLIDE_FORWARD: ClassNames = {
   enter: BASE,
   enterActive: 'slide-next-enter',
@@ -155,14 +196,14 @@ const SLIDE_BACK: ClassNames = {
 }
 
 const TAB_SLIDE_FORWARD: ClassNames = {
-  enter: BASE,
+  enter: `${BASE} fr-tab-pre-enter-right`,
   enterActive: 'tabs-slide-enter-forward',
   exit: BASE,
   exitActive: 'tabs-slide-leave-forward',
 }
 
 const TAB_SLIDE_BACK: ClassNames = {
-  enter: BASE,
+  enter: `${BASE} fr-tab-pre-enter-left`,
   enterActive: 'tabs-slide-enter-back',
   exit: BASE,
   exitActive: 'tabs-slide-leave-back',
@@ -196,6 +237,24 @@ const SCALE_BACK: ClassNames = {
   exitActive: 'scale-leave',
 }
 
+// Tab-aware scale: entering page pre-positioned at the animation's `from` state
+// (opacity 0, scale 0.92) so it doesn't flash at full size before scaling in.
+const TAB_SCALE_FORWARD: ClassNames = {
+  enter: `${BASE} fr-tab-pre-enter-scale`,
+  enterActive: 'scale-enter',
+  exit: `${BASE} fr-enter-below`,
+  exitActive: '',
+}
+
+// Tab-aware fade: entering page pre-positioned at opacity 0 so it doesn't flash
+// fully visible before the fade-in animation begins.
+const TAB_FADE_FORWARD: ClassNames = {
+  enter: `${BASE} fr-tab-pre-enter-fade`,
+  enterActive: 'fade-enter',
+  exit: BASE,
+  exitActive: 'fade-leave',
+}
+
 const NONE: ClassNames = {
   enter: 'none-enter',
   enterActive: '',
@@ -223,17 +282,59 @@ const MODAL_POP: ClassNames = {
 
 for (const preset of [
   { type: 'none', forward: NONE, back: NONE },
-  { type: 'cover', forward: COVER_FORWARD, back: COVER_BACK },
-  { type: 'slide', forward: SLIDE_FORWARD, back: SLIDE_BACK },
-  { type: 'fade', forward: FADE_FORWARD, back: FADE_BACK },
-  { type: 'scale', forward: SCALE_FORWARD, back: SCALE_BACK },
-  { type: 'modal', forward: MODAL_PUSH, back: MODAL_POP },
+  {
+    type: 'cover',
+    forward: COVER_FORWARD,
+    back: COVER_BACK,
+    tab: { forward: TAB_COVER_FORWARD, back: TAB_COVER_BACK },
+  },
+  {
+    type: 'slide',
+    forward: SLIDE_FORWARD,
+    back: SLIDE_BACK,
+    // Without tabIndex the direction is unknown: degrade to fade-with-pre-enter rather than
+    // sliding in a potentially wrong direction. TAB_FADE_FORWARD is used (not FADE_FORWARD)
+    // so the entering page starts at opacity:0 and avoids the one-frame flash.
+    tab: { forward: TAB_SLIDE_FORWARD, back: TAB_SLIDE_BACK, undirected: TAB_FADE_FORWARD },
+  },
+  {
+    type: 'fade',
+    forward: FADE_FORWARD,
+    back: FADE_BACK,
+    // Symmetric in tab context — same animation regardless of direction.
+    tab: { forward: TAB_FADE_FORWARD },
+  },
+  {
+    type: 'scale',
+    forward: SCALE_FORWARD,
+    back: SCALE_BACK,
+    // Symmetric in tab context: entering page always scales in.
+    tab: { forward: TAB_SCALE_FORWARD },
+  },
+  {
+    type: 'modal',
+    forward: MODAL_PUSH,
+    back: MODAL_POP,
+    // Modal tabs: always push up regardless of direction (bidirectional).
+    tab: { forward: TAB_MODAL_PUSH, bidirectional: true },
+  },
 ] satisfies AnimPreset[]) {
   registerAnimPreset(preset)
 }
 
 function presetOf(type: RouteAnimType): AnimPreset {
-  return animPresetRegistry.get(type) ?? animPresetRegistry.get(DEFAULT_ANIM)!
+  const preset = animPresetRegistry.get(type)
+  if (!preset) {
+    // Unknown animation type — likely a typo (e.g. "node" instead of "none").
+    // Warn in any environment so misconfiguration is caught early in development.
+    console.warn(
+      `[react-router-dom-animate] Unknown animation type "${type}". ` +
+      `Falling back to "${DEFAULT_ANIM}". ` +
+      `Register it with registerAnimPreset() or check for typos.`,
+    )
+    return animPresetRegistry.get(DEFAULT_ANIM)!
+  }
+  return preset
 }
 
 export function classNamesFor(nav: NavType | string, fromType: RouteAnimType, toType: RouteAnimType): ClassNames {
@@ -391,18 +492,40 @@ function tabIndexFromSnapshot(snap: RouteSnapshot): number | undefined {
   return undefined
 }
 
+/**
+ * Resolve ClassNames for keepAlive switch-mode (tab) navigation.
+ *
+ * Uses `preset.tab` when available, making the logic fully generic — no
+ * per-type hardcoding required. Custom presets registered via
+ * `registerAnimPreset` automatically get correct tab behaviour as long as
+ * they define `tab.forward` (with the appropriate `fr-tab-pre-enter-*` class
+ * to prevent the one-frame flash in keepAlive mode).
+ *
+ * Decision order:
+ *   1. Bidirectional preset  → always `tab.forward`
+ *   2. Known tabIndex direction → `tab.forward` or `tab.back`
+ *   3. No tabIndex            → `tab.undirected` → `tab.forward`
+ *   4. No `tab` field at all  → REPLACE classNames fallback (backward compat
+ *      for custom presets registered before the tab field was introduced)
+ */
 function classNamesForTabs(from: RouteSnapshot, to: RouteSnapshot, fallback: RouteAnimType): ClassNames {
   const anim = resolveAnim(to, fallback)
-  if (anim === 'slide') {
-    const fromIdx = tabIndexFromSnapshot(from)
-    const toIdx = tabIndexFromSnapshot(to)
-    if (fromIdx !== undefined && toIdx !== undefined) {
-      return toIdx > fromIdx ? TAB_SLIDE_FORWARD : TAB_SLIDE_BACK
-    }
-    return FADE_FORWARD
+  const preset = presetOf(anim)
+  const tab = preset.tab
+  const fromIdx = tabIndexFromSnapshot(from)
+  const toIdx = tabIndexFromSnapshot(to)
+
+  if (!tab) {
+    return classNamesFor('REPLACE', resolveAnim(from, fallback), anim)
   }
-  if (anim === 'fade') return FADE_FORWARD
-  return classNamesFor('REPLACE', resolveAnim(from, fallback), anim)
+
+  if (tab.bidirectional) return tab.forward
+
+  if (fromIdx !== undefined && toIdx !== undefined && fromIdx !== toIdx) {
+    return toIdx > fromIdx ? tab.forward : (tab.back ?? tab.forward)
+  }
+
+  return tab.undirected ?? tab.forward
 }
 
 export function resolveAnim(snapshot: RouteSnapshot, fallback: RouteAnimType): RouteAnimType {

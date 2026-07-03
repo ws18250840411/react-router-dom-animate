@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
 import { Navigate, NavLink, useNavigate } from 'react-router-dom'
-import type { KeepAliveRef } from 'react-router-dom-animate'
+import type { KeepAliveRef, RouteAnimType } from 'react-router-dom-animate'
 import { AnimatedOutlet, useActivated, useDeactivated } from 'react-router-dom-animate'
+
+// ─── Filter demo (include / exclude) ────────────────────────────────────────
 
 // ─── Tab A: counter + scroll ────────────────────────────────────────────────
 
@@ -84,9 +86,19 @@ export function KeepAliveIndex() {
   return <Navigate to="a" replace />
 }
 
+const ANIM_OPTIONS: { label: string; value: RouteAnimType | undefined }[] = [
+  { label: 'none', value: undefined },
+  { label: 'cover', value: 'cover' },
+  { label: 'modal', value: 'modal' },
+  { label: 'slide', value: 'slide' },
+  { label: 'fade', value: 'fade' },
+  { label: 'scale', value: 'scale' },
+]
+
 export function KeepAliveLayout() {
   const navigate = useNavigate()
   const aliveRef = useRef<KeepAliveRef | undefined>(undefined)
+  const [anim, setAnim] = useState<RouteAnimType | undefined>(undefined)
 
   return (
     <div className="app-shell">
@@ -122,8 +134,31 @@ export function KeepAliveLayout() {
         </div>
       </header>
 
+      <div style={{ display: 'flex', gap: 6, padding: '6px 12px', background: 'rgba(0,0,0,0.04)', fontSize: 12 }}>
+        <span style={{ opacity: 0.5, alignSelf: 'center' }}>transition:</span>
+        {ANIM_OPTIONS.map((opt) => (
+          <button
+            key={opt.label}
+            type="button"
+            data-testid={`ka-anim-${opt.label}`}
+            onClick={() => setAnim(opt.value)}
+            style={{
+              padding: '2px 8px',
+              borderRadius: 4,
+              border: '1px solid #cbd5e1',
+              background: anim === opt.value ? '#3b82f6' : 'white',
+              color: anim === opt.value ? 'white' : 'inherit',
+              cursor: 'pointer',
+              fontSize: 12,
+            }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       <main className="app-main">
-        <AnimatedOutlet keepAlive mode="switch" max={5} aliveRef={aliveRef} />
+        <AnimatedOutlet keepAlive mode="switch" max={5} aliveRef={aliveRef} transition={anim} />
       </main>
 
       <nav className="tabs">
@@ -133,6 +168,77 @@ export function KeepAliveLayout() {
             to={`/keep-alive/${key}`}
             replace
             data-testid={`ka-tab-link-${key}`}
+            className={({ isActive }) => `tab${isActive ? ' active' : ''}`}
+          >
+            Tab {key.toUpperCase()}
+          </NavLink>
+        ))}
+      </nav>
+    </div>
+  )
+}
+
+// ─── include / exclude demo ──────────────────────────────────────────────────
+
+/** Simple page that tracks mount count — re-mount means the cache was cleared. */
+function FilterPage({ name, testId }: { name: string; testId: string }) {
+  const [count, setCount] = useState(0)
+  const mountCount = useRef(0)
+  mountCount.current += 1
+
+  return (
+    <div className="page" data-testid={testId}>
+      <h2>Page {name}</h2>
+      <p>Mount count: <span data-testid={`${testId}-mount`}>{mountCount.current}</span></p>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12 }}>
+        <button type="button" data-testid={`${testId}-dec`} onClick={() => setCount((c) => c - 1)}>−</button>
+        <span data-testid={`${testId}-count`} style={{ minWidth: 40, textAlign: 'center' }}>{count}</span>
+        <button type="button" data-testid={`${testId}-inc`} onClick={() => setCount((c) => c + 1)}>+</button>
+      </div>
+    </div>
+  )
+}
+
+export function FilterPageA() { return <FilterPage name="A（缓存）" testId="kf-page-a" /> }
+export function FilterPageB() { return <FilterPage name="B（不缓存）" testId="kf-page-b" /> }
+export function FilterPageC() { return <FilterPage name="C（缓存）" testId="kf-page-c" /> }
+export function FilterIndex() { return <Navigate to="a" replace /> }
+
+/**
+ * 演示 exclude prop：页面 B 被排除在缓存外，
+ * 离开后再回来会重新 mount（mount count +1，计数清零）。
+ * A、C 正常缓存，state 保留。
+ */
+export function FilterLayout() {
+  const navigate = useNavigate()
+  const BASE = '/keep-alive-filter'
+
+  return (
+    <div className="app-shell">
+      <header className="subbar">
+        <button type="button" className="tab secondary" onClick={() => navigate(-1)}>← 返回</button>
+        <span>include/exclude Demo</span>
+        <span style={{ fontSize: 12, opacity: 0.6 }}>
+          B 页面设置了 <code>exclude</code>，切走后状态不保留
+        </span>
+      </header>
+
+      <main className="app-main">
+        {/* 只缓存 A、C；B 每次进入都重新 mount */}
+        <AnimatedOutlet
+          keepAlive
+          mode="switch"
+          exclude={[`${BASE}/b`]}
+        />
+      </main>
+
+      <nav className="tabs">
+        {(['a', 'b', 'c'] as const).map((key) => (
+          <NavLink
+            key={key}
+            to={`${BASE}/${key}`}
+            replace
+            data-testid={`kf-tab-link-${key}`}
             className={({ isActive }) => `tab${isActive ? ' active' : ''}`}
           >
             Tab {key.toUpperCase()}

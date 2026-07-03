@@ -14,6 +14,7 @@
   --fr-duration: 300ms;
   --fr-ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --fr-ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --fr-ease-tab: cubic-bezier(0.4, 0, 0.2, 1);
   --fr-modal-overlay: rgba(15, 23, 42, 0.55);
 }
 
@@ -50,29 +51,6 @@
   }
 }
 
-/* keepAlive tabs: inactive tabs stay mounted but hidden.
-   Use visibility:hidden + position:absolute instead of display:none so the
-   browser keeps the element rendered in memory — this preserves scroll
-   position when switching back to a previously visited tab. */
-.animated-outlet-page.fr-tab-inactive {
-  visibility: hidden;
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-}
-
-/* Background-preserved pages (keepBackground mode).
-   Applied to all entries in the back-stack that are not the top two pages.
-   They stay mounted in the DOM to preserve scroll state and component state,
-   but are invisible and non-interactive until popped back to the foreground. */
-.animated-outlet-page.fr-bg-hidden {
-  visibility: hidden;
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-}
 
 /* prefers-reduced-motion: override */
 /* Respect the user's system-level "reduce motion" preference.
@@ -279,28 +257,84 @@
 }
 
 /* Tab pager：左右对称平移，无 stack 视差 */
+
+/*
+ * Pre-enter position classes applied during the CSSTransition "enter" phase
+ * (before "enter-active"). This keeps the incoming page off-screen during the
+ * one-RAF gap between enter and enter-active, preventing a one-frame flash at
+ * position 0 before the slide animation begins.
+ */
+.animated-outlet-page.fr-tab-pre-enter-right {
+  -webkit-transform: translate3d(100%, 0, 0);
+  transform: translate3d(100%, 0, 0);
+}
+
+.animated-outlet-page.fr-tab-pre-enter-left {
+  -webkit-transform: translate3d(-100%, 0, 0);
+  transform: translate3d(-100%, 0, 0);
+}
+
+/* Pre-enter position for modal (slide-up) in keepAlive switch mode */
+.animated-outlet-page.fr-tab-pre-enter-bottom {
+  -webkit-transform: translate3d(0, 100%, 0);
+  transform: translate3d(0, 100%, 0);
+}
+
+/* Pre-enter position for cover backward (tab pop): entering page starts in the
+   same scaled/faded state as the slide-prev-enter-cover animation's from-keyframe.
+   This prevents the one-frame flash at full-size before the emerge animation begins. */
+.animated-outlet-page.fr-tab-pre-enter-below {
+  opacity: 0;
+  -webkit-transform: translate3d(0, 0, -100px) scale(0.92);
+  transform: translate3d(0, 0, -100px) scale(0.92);
+}
+
+/* Pre-enter position for scale animation in keepAlive switch mode.
+   Matches the scale-enter keyframe's `from` state so the page starts off invisible
+   and scaled-down instead of flashing at full size before the animation begins. */
+.animated-outlet-page.fr-tab-pre-enter-scale {
+  opacity: 0;
+  -webkit-transform: translate3d(0, 0, 0) scale(0.92);
+  transform: translate3d(0, 0, 0) scale(0.92);
+}
+
+/* Pre-enter position for fade animation in keepAlive switch mode.
+   Matches the fade-enter keyframe's `from` state so the page starts invisible
+   instead of flashing fully opaque before the fade-in begins. */
+.animated-outlet-page.fr-tab-pre-enter-fade {
+  opacity: 0;
+}
+
 .animated-outlet-page.tabs-slide-enter-forward {
   z-index: 2;
   -webkit-animation-name: fr-tabs-slide-enter-forward;
   animation-name: fr-tabs-slide-enter-forward;
+  -webkit-animation-timing-function: var(--fr-ease-tab);
+  animation-timing-function: var(--fr-ease-tab);
 }
 
 .animated-outlet-page.tabs-slide-leave-forward {
   z-index: 1;
   -webkit-animation-name: fr-tabs-slide-leave-forward;
   animation-name: fr-tabs-slide-leave-forward;
+  -webkit-animation-timing-function: var(--fr-ease-tab);
+  animation-timing-function: var(--fr-ease-tab);
 }
 
 .animated-outlet-page.tabs-slide-enter-back {
   z-index: 2;
   -webkit-animation-name: fr-tabs-slide-enter-back;
   animation-name: fr-tabs-slide-enter-back;
+  -webkit-animation-timing-function: var(--fr-ease-tab);
+  animation-timing-function: var(--fr-ease-tab);
 }
 
 .animated-outlet-page.tabs-slide-leave-back {
   z-index: 1;
   -webkit-animation-name: fr-tabs-slide-leave-back;
   animation-name: fr-tabs-slide-leave-back;
+  -webkit-animation-timing-function: var(--fr-ease-tab);
+  animation-timing-function: var(--fr-ease-tab);
 }
 
 @-webkit-keyframes fr-tabs-slide-enter-forward {

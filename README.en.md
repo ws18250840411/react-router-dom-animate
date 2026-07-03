@@ -152,6 +152,19 @@ Control globally via `--fr-duration` (default 300ms). Each animation type can be
 }
 ```
 
+Tab slide animation (`keepAlive mode="switch" transition="slide"`) also supports a dedicated easing variable:
+
+```css
+:root {
+  /* Tab slide easing (default: cubic-bezier(0.4, 0, 0.2, 1) — Material Design standard)
+     Faster start, smooth deceleration — better suited for horizontal tab transitions than global --fr-ease */
+  --fr-ease-tab: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* More spring-like feel: */
+  /* --fr-ease-tab: cubic-bezier(0.22, 1, 0.36, 1); */
+}
+```
+
 ### JS (optional)
 
 To override only the duration in JS (without replacing CSS class names), use `setAnimDuration`:
@@ -206,13 +219,49 @@ For bottom navigation bars and multi-tab UIs:
 
 All visited pages are cached by pathname and instantly shown/hidden when switching.
 
-#### `max` — LRU cache limit (switch mode only)
+#### Cache invalidation (switch mode only)
+
+Switch mode provides three complementary cache management strategies:
+
+**`max` — LRU eviction limit**
 
 ```tsx
 <AnimatedOutlet keepAlive mode="switch" max={10} />
 ```
 
-When the number of cached pages exceeds `max`, the least recently used page is evicted. Omitting `max` means no limit.
+When the number of cached pages exceeds `max`, the least recently used page is evicted. Omitting `max` means no limit (a fixed tab bar is naturally bounded, so `max` is optional there).
+
+**`include` — cache allow-list**
+
+Only pages matching the filter are kept in the cache; unmatched pages are destroyed on exit and remounted fresh on next visit:
+
+```tsx
+// exact pathname list
+<AnimatedOutlet keepAlive mode="switch" include={['/home', '/profile', '/settings']} />
+
+// RegExp
+<AnimatedOutlet keepAlive mode="switch" include={/^\/tabs\//} />
+
+// custom predicate
+<AnimatedOutlet keepAlive mode="switch" include={(path) => !path.startsWith('/form')} />
+```
+
+**`exclude` — cache deny-list**
+
+Pages matching the filter are evicted immediately on exit; all others are cached normally:
+
+```tsx
+// one-shot pages (forms, confirmation screens, etc.)
+<AnimatedOutlet keepAlive mode="switch" exclude={['/checkout', '/payment']} />
+
+// RegExp
+<AnimatedOutlet keepAlive mode="switch" exclude={/\/form\//} />
+
+// custom predicate
+<AnimatedOutlet keepAlive mode="switch" exclude={(path) => path.startsWith('/wizard')} />
+```
+
+`include` and `exclude` can be combined: a page is cached only if it passes `include` **and** does not match `exclude`.
 
 #### `aliveRef` — imperative cache control (switch mode only)
 

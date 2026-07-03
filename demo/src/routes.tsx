@@ -17,6 +17,11 @@ import {
   KeepAliveTabA,
   KeepAliveTabB,
   KeepAliveTabC,
+  FilterIndex,
+  FilterLayout,
+  FilterPageA,
+  FilterPageB,
+  FilterPageC,
 } from './pages/KeepAliveDemo'
 
 const tabChildren: RouteObject[] = [
@@ -49,9 +54,20 @@ export const routes: RouteObject[] = [
         element: <KeepAliveLayout />,
         children: [
           { index: true, element: <KeepAliveIndex /> },
-          { path: 'a', element: <KeepAliveTabA /> },
-          { path: 'b', element: <KeepAliveTabB /> },
-          { path: 'c', element: <KeepAliveTabC /> },
+          { path: 'a', handle: { tabIndex: 0 }, element: <KeepAliveTabA /> },
+          { path: 'b', handle: { tabIndex: 1 }, element: <KeepAliveTabB /> },
+          { path: 'c', handle: { tabIndex: 2 }, element: <KeepAliveTabC /> },
+        ],
+      },
+
+      {
+        path: 'keep-alive-filter',
+        element: <FilterLayout />,
+        children: [
+          { index: true, element: <FilterIndex /> },
+          { path: 'a', element: <FilterPageA /> },
+          { path: 'b', element: <FilterPageB /> },
+          { path: 'c', element: <FilterPageC /> },
         ],
       },
 

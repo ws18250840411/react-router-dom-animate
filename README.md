@@ -233,6 +233,19 @@ navigate('/tabs/profile', { replace: true, state: { mode: 'switch', transition: 
 }
 ```
 
+Tab 滑动动画（`keepAlive mode="switch" transition="slide"`）额外支持 `--fr-ease-tab` 专属缓动变量：
+
+```css
+:root {
+  /* tab 切换缓动（默认 cubic-bezier(0.4, 0, 0.2, 1)，Material Design 标准）
+     快速启动、平滑减速，比全局 --fr-ease 更适合横向 tab 滑动 */
+  --fr-ease-tab: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 改成弹簧感更强的效果示例 */
+  /* --fr-ease-tab: cubic-bezier(0.22, 1, 0.36, 1); */
+}
+```
+
 ### JS（可选）
 
 仅需修改时长时用 `setAnimDuration`，无需重写 CSS 类名：
@@ -287,13 +300,49 @@ registerAnimPreset({
 
 所有访问过的页面按 pathname 缓存，切换时即时显示/隐藏。
 
-#### `max`：LRU 内存上限（仅 switch 模式）
+#### 缓存失效机制（仅 switch 模式）
+
+Switch 模式提供三种互补的缓存管理方式：
+
+**`max`：LRU 内存上限**
 
 ```tsx
 <AnimatedOutlet keepAlive mode="switch" max={10} />
 ```
 
-超过 `max` 时按 LRU 自动淘汰最老的缓存。不传 `max` 时不限制。
+超过 `max` 时按 LRU 自动淘汰最老的缓存。不传 `max` 时不限制（固定数量的 Tab 栏天然有界，无需设置）。
+
+**`include`：允许缓存的路由白名单**
+
+只有匹配的路由才会保留在缓存中；不匹配的页面在离开时会被销毁，下次进入重新 mount：
+
+```tsx
+// 精确匹配路径列表
+<AnimatedOutlet keepAlive mode="switch" include={['/home', '/profile', '/settings']} />
+
+// 正则匹配
+<AnimatedOutlet keepAlive mode="switch" include={/^\/tabs\//} />
+
+// 自定义函数
+<AnimatedOutlet keepAlive mode="switch" include={(path) => !path.startsWith('/form')} />
+```
+
+**`exclude`：不缓存的路由黑名单**
+
+匹配的路由在离开时立即清除，其他路由正常缓存：
+
+```tsx
+// 一次性页面（表单、确认页等）不缓存
+<AnimatedOutlet keepAlive mode="switch" exclude={['/checkout', '/payment']} />
+
+// 正则匹配
+<AnimatedOutlet keepAlive mode="switch" exclude={/\/form\//} />
+
+// 自定义函数
+<AnimatedOutlet keepAlive mode="switch" exclude={(path) => path.startsWith('/wizard')} />
+```
+
+`include` 与 `exclude` 可同时使用：先过 `include` 白名单，再过 `exclude` 黑名单。
 
 #### `aliveRef`：命令式缓存控制（仅 switch 模式）
 

@@ -28,12 +28,51 @@ export interface TransitionPlan {
   duration: number
 }
 
+/**
+ * Tab-specific animation variants for keepAlive switch mode.
+ *
+ * When a preset defines `tab`, `classNamesForTabs` uses it instead of the
+ * generic `forward`/`back` fields — ensuring proper pre-enter positioning
+ * (e.g. `fr-tab-pre-enter-*`) works for every animation type without
+ * per-type hardcoded handling.
+ */
+export interface TabPreset {
+  /** ClassNames for forward navigation (lower tabIndex → higher tabIndex, e.g. Tab A → Tab B). */
+  forward: ClassNames
+  /**
+   * ClassNames for backward navigation (higher tabIndex → lower tabIndex, e.g. Tab B → Tab A).
+   * If absent, falls back to `forward` (symmetric animation).
+   */
+  back?: ClassNames
+  /**
+   * ClassNames when direction cannot be determined (no `tabIndex` set on routes).
+   * If absent, falls back to `forward`.
+   */
+  undirected?: ClassNames
+  /**
+   * When `true`, always uses `forward` regardless of tab direction.
+   * Useful for symmetric animations like `modal` tabs that always push up.
+   */
+  bidirectional?: boolean
+}
+
 export interface AnimPreset {
   type: RouteAnimType
   forward: ClassNames
   back: ClassNames
   /** Override the default --fr-duration for this specific animation type. */
   durationMs?: number
+  /**
+   * Tab-specific animation variants for keepAlive switch mode.
+   *
+   * When provided, `classNamesForTabs` uses these instead of the generic
+   * `forward`/`back` fields, enabling correct pre-enter positioning for
+   * all animation types without per-type hardcoded branches.
+   *
+   * Custom presets registered via `registerAnimPreset` should define `tab`
+   * if they need smooth keepAlive switch-mode animations.
+   */
+  tab?: TabPreset
 }
 
 export interface AnimPresetRegistry {
@@ -42,6 +81,18 @@ export interface AnimPresetRegistry {
   has: (type: RouteAnimType) => boolean
   types: () => RouteAnimType[]
 }
+
+/**
+ * Filter for controlling which pages are cached in keepAlive switch mode.
+ *
+ * - `string[]`: array of exact pathnames to match (e.g. `['/home', '/profile']`)
+ * - `RegExp`: regex tested against the pathname (e.g. `/^\/tabs\//`)
+ * - `(pathname: string) => boolean`: custom predicate function
+ *
+ * Used by `include` (allow-list) and `exclude` (deny-list) props on
+ * `<AnimatedOutlet keepAlive mode="switch">`.
+ */
+export type KeepAliveFilter = string[] | RegExp | ((pathname: string) => boolean)
 
 /**
  * Imperative handle returned by `aliveRef` on `<AnimatedOutlet keepAlive>`.

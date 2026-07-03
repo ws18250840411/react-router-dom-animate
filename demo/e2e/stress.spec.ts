@@ -460,3 +460,94 @@ test.describe('压测 — Catalog stack', () => {
     await expect(page.getByTestId('catalog-list')).toBeVisible()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 回归：slide 动画每次都有方向（Bug #1：fromSnapRef 过期导致有时无动画）
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('回归 — slide tabs 每次都有动画（Bug #1 fromSnapRef）', () => {
+  test('wrap tabs-slide A→B→A→B 每轮切换都有 fr-animating class', async ({ page }) => {
+    const errors = trackErrors(page)
+    await page.goto('/wrap/tabs-slide/a')
+    await expect(page.getByTestId('tab-a-page')).toBeVisible()
+
+    const tabA = page.getByTestId('tab-link-a').last()
+    const tabB = page.getByTestId('tab-link-b').last()
+
+    const animationSeenEachRound: boolean[] = []
+    const ROUNDS = 4
+
+    for (let i = 0; i < ROUNDS; i++) {
+      const target = i % 2 === 0 ? tabB : tabA
+      await target.click({ force: true })
+
+      // 每次切换后，立即检查是否存在动画 class
+      const seen = await expect
+        .poll(
+          () =>
+            page.evaluate(() =>
+              [...document.querySelectorAll('.animated-outlet-page')].some((el) =>
+                el.className.includes('fr-animating'),
+              ),
+            ),
+          { timeout: 800 },
+        )
+        .toBe(true)
+      animationSeenEachRound.push(true)
+
+      // 等动画结束再进行下一轮
+      await page.waitForTimeout(SETTLE_MS)
+    }
+
+    // 每轮都应该有动画（不应 "有时无动画"）
+    expect(animationSeenEachRound.length).toBe(ROUNDS)
+    expect(await page.locator('.fr-animating').count()).toBe(0)
+    expect(errors).toEqual([])
+  })
+
+  test('push tabs-slide 快速往返 10 次：始终保持正确方向 class', async ({ page }) => {
+    const errors = trackErrors(page)
+    await page.goto('/push/tabs-slide/a')
+
+    const tabA = page.getByTestId('tab-link-a').last()
+    const tabB = page.getByTestId('tab-link-b').last()
+
+    let wrongDirectionCount = 0
+    const ROUNDS = 10
+
+    for (let i = 0; i < ROUNDS; i++) {
+      const isForward = i % 2 === 0
+      const target = isForward ? tabB : tabA
+
+      await target.click({ force: true })
+
+      // 检查动画方向是否正确
+      const correctClass = isForward ? 'tabs-slide-enter-forward' : 'tabs-slide-enter-back'
+      const hasCorrectClass = await page.evaluate(
+        (cls) =>
+          [...document.querySelectorAll('.animated-outlet-page')].some((el) =>
+            el.className.includes(cls),
+          ),
+        correctClass,
+      )
+
+      // 如果方向完全错了（出现了反方向的 class），记录
+      const wrongClass = isForward ? 'tabs-slide-enter-back' : 'tabs-slide-enter-forward'
+      const hasWrongClass = await page.evaluate(
+        (cls) =>
+          [...document.querySelectorAll('.animated-outlet-page')].some((el) =>
+            el.className.includes(cls),
+          ),
+        wrongClass,
+      )
+      if (hasWrongClass && !hasCorrectClass) wrongDirectionCount++
+
+      await page.waitForTimeout(SETTLE_MS)
+    }
+
+    // 方向错误应为 0（动画方向始终正确）
+    expect(wrongDirectionCount).toBe(0)
+    expect(await page.locator('.fr-animating').count()).toBe(0)
+    expect(errors).toEqual([])
+  })
+})

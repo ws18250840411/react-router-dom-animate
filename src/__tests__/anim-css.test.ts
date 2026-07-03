@@ -25,7 +25,19 @@ describe('anim.css 时长与缓动', () => {
   })
 
   it('slide-next-enter 不单独覆盖缓动（与 cover 共用 fr-anim）', () => {
-    expect(CSS).not.toMatch(/\.slide-next-enter[\s\S]*animation-timing-function/)
+    // Only check within the .slide-next-enter rule block (not cross-file greedy match).
+    expect(CSS).not.toMatch(/\.slide-next-enter\s*\{[^}]*animation-timing-function/)
+  })
+
+  it('tab slide 动画使用专属缓动 --fr-ease-tab', () => {
+    expect(CSS).toContain('--fr-ease-tab: cubic-bezier(0.4, 0, 0.2, 1)')
+    expect(CSS).toMatch(/tabs-slide-enter-forward[\s\S]*?animation-timing-function: var\(--fr-ease-tab\)/)
+    expect(CSS).toMatch(/tabs-slide-enter-back[\s\S]*?animation-timing-function: var\(--fr-ease-tab\)/)
+  })
+
+  it('fr-tab-pre-enter-right/left 将页面定位在屏幕外侧（防止位置 0 闪烁）', () => {
+    expect(CSS).toMatch(/\.animated-outlet-page\.fr-tab-pre-enter-right\s*\{[^}]*translate3d\(100%/)
+    expect(CSS).toMatch(/\.animated-outlet-page\.fr-tab-pre-enter-left\s*\{[^}]*translate3d\(-100%/)
   })
 
   it('modal POP 退场壳层使用 --fr-modal-overlay', () => {

@@ -9,4 +9,4 @@ export type { AnimatedOutletProps } from './outlet'
 
 export { registerAnimPreset, setAnimDuration, warmDurationMs } from './transition'
 
-export type { RouteAnimType, AnimPreset, ClassNames, OutletMode, KeepAliveRef } from './types'
+export type { RouteAnimType, AnimPreset, TabPreset, ClassNames, OutletMode, KeepAliveRef, KeepAliveFilter } from './types'
