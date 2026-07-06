@@ -1,366 +1,236 @@
 # react-router-dom-animate
 
-为 [react-router-dom](https://reactrouter.com/) 提供栈式页面转场的轻量动画库，基于 [react-transition-group](https://reactcommunity.org/react-transition-group/)，可快速通过 JS 或组件方式实现页面动画。
+为 [react-router-dom](https://reactrouter.com/) v7+ 提供栈式页面转场的轻量动画库，基于 React 19 [`<Activity>`](https://react.dev/reference/react/Activity)。
 
-## 特性
-
-- 支持嵌套 `AnimatedOutlet`，不同区域可配置不同动画
-- 支持 JS（`navigate` + `state`）与组件（`handle` / props）两种配置方式
-- 可通过 `registerAnimPreset` 扩展自定义预设
-
-## 安装
+**安装**
 
 ```bash
 npm install react-router-dom-animate
 ```
 
-**Peer dependencies:** `react` ≥18、`react-dom` ≥18、`react-router-dom` ≥7
+> Peer deps：`react` ≥19、`react-dom` ≥19、`react-router-dom` ≥7
 
-## 快速开始
+---
 
-### 1. 入口 `main.tsx`
+## 入门教程
 
-```tsx
-import { createRoot } from 'react-dom/client'
-import { RouterProvider, createBrowserRouter } from 'react-router-dom'
-import { routes } from './routes'
+### 第一步：替换根路由的 Outlet
 
-const router = createBrowserRouter(routes)
-
-createRoot(document.getElementById('root')!).render(
-  <RouterProvider router={router} />,
-)
-```
-
-### 2. 路由 `routes.tsx`
-
-根路由挂上 `AnimatedOutlet`，子路由照常写页面：
+打开你的路由文件，找到根 `layout` 组件（一般含 `<Outlet />`），改成 `<AnimatedOutlet />`：
 
 ```tsx
-import type { RouteObject } from 'react-router-dom'
+// layout.tsx（或 root.tsx）
 import { AnimatedOutlet } from 'react-router-dom-animate'
-import { HomePage } from './pages/HomePage'
-import { AboutPage } from './pages/AboutPage'
 
-export const routes: RouteObject[] = [
-  {
-    element: <AnimatedOutlet />, // 全站默认 cover
-    children: [
-      { index: true, element: <HomePage /> },
-      { path: 'about', element: <AboutPage /> },
-    ],
-  },
-]
-```
-
-### 3. 页面组件
-
-```tsx
-// pages/HomePage.tsx
-import { useNavigate } from 'react-router-dom'
-
-export function HomePage() {
-  const navigate = useNavigate()
-
+export function RootLayout() {
   return (
     <div>
-      <h1>Home</h1>
-      <button type="button" onClick={() => navigate('/about')}>
-        去 About（默认 cover）
-      </button>
+      {/* 头部、侧边栏等保持不变 */}
+      <AnimatedOutlet />  {/* ← 只改这一行 */}
     </div>
   )
 }
 ```
 
-```tsx
-// pages/AboutPage.tsx
-export function AboutPage() {
-  return <h1>About</h1>
-}
-```
+完成。所有子页面现在都有默认的 `cover`（覆盖滑入）动画。
 
-### 4. 指定动画（二选一）
+### 第二步：指定动画类型
 
-**写法 A** — 跳转时带 `state`：
+**最简单的方式** — 在对应页面的路由上声明：
 
 ```tsx
-navigate('/about', { state: { transition: 'fade' } })
-```
-
-**写法 B** — 路由或组件上声明：
-
-```tsx
-// 方式 1：写在 routes.tsx
+// routes.tsx
 {
-  path: 'about',
+  path: 'detail/:id',
   element: (
-    <AnimatedOutlet transition="fade">
-      <AboutPage />
+    <AnimatedOutlet transition="cover">  {/* ← 给 detail 指定 cover 动画 */}
+      <DetailPage />
     </AnimatedOutlet>
   ),
 }
-
-// 方式 2：直接写在页面里，不依赖 routes 配置
-// pages/AboutPage.tsx
-export function AboutPage() {
-  return (
-    <AnimatedOutlet transition="fade">
-      <div>About 内容</div>
-    </AnimatedOutlet>
-  )
-}
 ```
 
-两种方式效果相同，跳转用普通 `navigate('/about')` 即可。
-
-后退 `navigate(-1)` 不必再传 `state`。列表进详情见下文；底栏 Tab 见「Tab 用法」。
-
-## 参考
-
-| Prop | 作用 | 默认 |
-|------|------|------|
-| `transition` | `cover` · `slide` · `fade` · `scale` · `modal` · `none` | `cover` |
-| `mode` | `stack` 压栈进详情；`switch` 平级切换（底部 Tab 等） | `stack` |
-| `keepAlive` | 页面保活。`mode="stack"`：栈模式（列表→详情）；`mode="switch"`：Switch 模式（Tab 缓存） | — |
-
-### 列表 → 详情
+**或者在跳转时临时指定**（不想改路由时用这个）：
 
 ```tsx
-// 写法 A
-navigate('/catalog/1', { state: { mode: 'stack', transition: 'cover' } })
-
-// 写法 B — 布局组件
-<AnimatedOutlet mode="stack" transition="cover" />
+navigate('/detail/1', { state: { transition: 'cover' } })
 ```
 
-## Tab 用法
+两种方式效果完全相同，后退 `navigate(-1)` 不需要再传参，自动播放反向动画。
 
-底栏 Tab 只需两件事：**菜单在 `<AnimatedOutlet>` 外**，**内容区加 `mode="switch"`**。默认即时切换（`none`），不卡顿；要动画再写 `transition="fade"` 或 `"slide"`。
+### 第三步：选择动画类型
 
-### 1. 路由 `routes.tsx`
+| 动画 | 效果 |
+|------|------|
+| `cover` | 新页从右侧滑入覆盖，返回时收回（iOS 风格），**默认** |
+| `slide` | 新旧页面同向对滑（Android 风格） |
+| `fade` | 淡入淡出 |
+| `scale` | 缩放进入 |
+| `modal` | 从底部弹出（适合半页弹层） |
+| `none` | 无动画，即时切换 |
+
+---
+
+## Props 完整说明
 
 ```tsx
+<AnimatedOutlet
+  transition="cover"         // 动画类型，见上表
+  mode="stack"               // stack（默认）| switch
+  keepAlive={false}          // 是否保活页面
+  max={undefined}            // 最大缓存页数（仅 keepAlive + switch 模式）
+  include={undefined}        // 缓存白名单（仅 keepAlive + switch 模式）
+  exclude={undefined}        // 缓存黑名单（仅 keepAlive + switch 模式）
+  aliveRef={undefined}       // 命令式缓存控制（仅 keepAlive + switch 模式）
+  className={undefined}      // 附加 class，作用在外层容器上
+/>
+```
+
+| Prop | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `transition` | `string` | `'cover'` | 内置：`cover` `slide` `fade` `scale` `modal` `none`；也可用自定义预设名称 |
+| `mode` | `'stack' \| 'switch'` | `'stack'` | `stack`：栈式压入详情；`switch`：平级切换（Tab）|
+| `keepAlive` | `boolean` | `false` | 保活页面。栈模式保留背景页，Switch 模式缓存所有访问页 |
+| `max` | `number` | 无限制 | 最多缓存多少页，超出按 LRU 淘汰（仅 switch 模式）|
+| `include` | `string[] \| RegExp \| (path) => boolean` | — | 缓存白名单，只有匹配的页面才缓存（仅 switch 模式）|
+| `exclude` | `string[] \| RegExp \| (path) => boolean` | — | 缓存黑名单，匹配的页面离开时立即销毁（仅 switch 模式）|
+| `aliveRef` | `RefObject<KeepAliveRef>` | — | 命令式缓存控制句柄（仅 switch 模式）|
+| `className` | `string` | — | 附加到外层 `.animated-outlet-group` 上的 class |
+
+> **也可通过路由 `handle` 配置**（省去给每个 `AnimatedOutlet` 手写 prop）：
+>
+> ```ts
+> { path: 'detail', handle: { transition: 'cover', keepAlive: true }, element: <Layout /> }
+> ```
+
+---
+
+## Tab 导航
+
+### 基础 Tab（无动画，即时切换）
+
+```tsx
+// routes.tsx
 {
   path: 'tabs',
   element: <TabsLayout />,
   children: [
-    { path: 'home', element: <HomeTab /> },
+    { path: 'home',    element: <HomeTab /> },
     { path: 'profile', element: <ProfileTab /> },
   ],
 }
 ```
 
-### 2. 布局 `TabsLayout.tsx`
-
 ```tsx
+// TabsLayout.tsx
 import { NavLink } from 'react-router-dom'
 import { AnimatedOutlet } from 'react-router-dom-animate'
 
 export function TabsLayout() {
   return (
-    <div className="flex h-full flex-col">
-      <main className="flex-1 overflow-hidden">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* 内容区 */}
+      <main style={{ flex: 1, overflow: 'hidden' }}>
         <AnimatedOutlet mode="switch" />
       </main>
-      <nav className="flex border-t">
-        <NavLink to="/tabs/home" replace>首页</NavLink>
-        <NavLink to="/tabs/profile" replace>我的</NavLink>
+      {/* 底部 Tab 栏放在 AnimatedOutlet 外面 */}
+      <nav style={{ display: 'flex', borderTop: '1px solid #eee' }}>
+        <NavLink to="/tabs/home"    replace style={{ flex: 1, textAlign: 'center', padding: 12 }}>首页</NavLink>
+        <NavLink to="/tabs/profile" replace style={{ flex: 1, textAlign: 'center', padding: 12 }}>我的</NavLink>
       </nav>
     </div>
   )
 }
 ```
 
-要点：`nav` 与 `<AnimatedOutlet mode="switch">` **同级**；菜单不参与转场。
+> **要点**：`nav` 和 `<AnimatedOutlet>` 是同级关系，底部菜单不参与转场。
 
-### 3. Tab 子页面
-
-```tsx
-// pages/HomeTab.tsx
-export function HomeTab() {
-  return <h1>首页</h1>
-}
-```
-
-### 4. 指定 Tab 动画（可选，二选一）
-
-不写 `transition` 时默认 **即时切换**。需要动画时：
-
-**写法 A** — 跳转时带 `state`：
+### 带动画的 Tab
 
 ```tsx
-navigate('/tabs/profile', { replace: true, state: { mode: 'switch', transition: 'fade' } })
+<AnimatedOutlet mode="switch" transition="fade" />   {/* 淡入淡出 */}
+<AnimatedOutlet mode="switch" transition="slide" />  {/* 左右滑动 */}
 ```
 
-**写法 B** — 组件上声明：
+使用 `slide` 时**需要**在每个 Tab 子路由的 `handle` 中声明 `tabIndex`，否则无法判断方向，自动降级为 `fade`：
 
 ```tsx
-<AnimatedOutlet mode="switch" transition="fade" />
-// 或 slide
-<AnimatedOutlet mode="switch" transition="slide" />
+{ path: 'home',    handle: { tabIndex: 0 }, element: <HomeTab /> }
+{ path: 'profile', handle: { tabIndex: 1 }, element: <ProfileTab /> }
 ```
 
-`slide` 时左右滑动；多 Tab 且路径无法表示顺序时，加 `tabIndex`（A 写 `state`，B 写 `handle`）。
+---
 
-> **注意**：使用 `transition="slide"` 时，**必须**在每个 Tab 子路由的 `handle` 中配置 `tabIndex`（或通过跳转 `state.tabIndex` 传入），否则无法判断滑动方向，会自动降级为 `fade` 动画：
->
-> ```tsx
-> { path: 'home', handle: { tabIndex: 0 }, element: <HomeTab /> }
-> { path: 'profile', handle: { tabIndex: 1 }, element: <ProfileTab /> }
-> ```
+## keepAlive 页面保活
 
-菜单样式、滑块等由业务实现，见 Demo `/push/tabs-indicator`。
+切换页面时**不会 remount**，state / DOM / 滚动位置完整保留。底层基于 React 19 官方 `<Activity>`，无第三方依赖。
 
-## 自定义动画时长
+### 栈模式（列表 → 详情）
 
-### CSS 变量（推荐）
-
-全局时长通过 `--fr-duration` 控制（默认 300ms），每种动画类型可单独通过 `--fr-duration-{type}` 覆盖：
-
-```css
-:root {
-  /* 全局兜底，所有未单独设置的类型都使用这个值 */
-  --fr-duration: 300ms;
-
-  /* 按类型单独设置（可选，不写则继承全局值） */
-  --fr-duration-cover: 300ms;   /* cover：新页面从右侧覆盖进来 */
-  --fr-duration-slide: 280ms;   /* slide：新旧页面同向滑动 */
-  --fr-duration-fade: 200ms;    /* fade：淡入淡出 */
-  --fr-duration-scale: 250ms;   /* scale：缩放 */
-  --fr-duration-modal: 450ms;   /* modal：底部弹出，通常慢一些更自然 */
-  --fr-duration-none: 0ms;      /* none：无动画（通常不需要设置） */
-}
-```
-
-Tab 滑动动画（`keepAlive mode="switch" transition="slide"`）额外支持 `--fr-ease-tab` 专属缓动变量：
-
-```css
-:root {
-  /* tab 切换缓动（默认 cubic-bezier(0.4, 0, 0.2, 1)，Material Design 标准）
-     快速启动、平滑减速，比全局 --fr-ease 更适合横向 tab 滑动 */
-  --fr-ease-tab: cubic-bezier(0.4, 0, 0.2, 1);
-
-  /* 改成弹簧感更强的效果示例 */
-  /* --fr-ease-tab: cubic-bezier(0.22, 1, 0.36, 1); */
-}
-```
-
-### JS（可选）
-
-仅需修改时长时用 `setAnimDuration`，无需重写 CSS 类名：
-
-```tsx
-import { setAnimDuration } from 'react-router-dom-animate'
-
-setAnimDuration('modal', 450)
-setAnimDuration('slide', 250)
-```
-
-如需**同时替换动画样式**，用 `registerAnimPreset`：
-
-```tsx
-import { registerAnimPreset } from 'react-router-dom-animate'
-
-registerAnimPreset({
-  type: 'my-flip',
-  forward: { enter: 'flip-enter', enterActive: 'flip-enter-active', exit: 'flip-exit', exitActive: 'flip-exit-active' },
-  back:    { enter: 'flip-enter-back', enterActive: 'flip-enter-back-active', exit: 'flip-exit-back', exitActive: 'flip-exit-back-active' },
-  durationMs: 600,
-})
-```
-
-**优先级**：`registerAnimPreset({ durationMs })` / `setAnimDuration` > `--fr-duration-{type}` > `--fr-duration`
-
-## 进阶 API
-
-### keepAlive：基于 React 19 `<Activity>` 的页面常驻
-
-`keepAlive` 底层使用 React 19.2 官方 [`<Activity>`](https://react.dev/reference/react/Activity) 原语实现，无第三方依赖。切换页面**不会 remount** 组件，state、DOM（含滚动位置）、已加载数据完整保留。
-
-#### 栈模式（`keepAlive`，`mode` 默认 `stack`）
-
-适用于列表 → 详情这类需要保留背景页状态的导航：
+适合列表页 → 详情页 → 返回列表页这类场景：
 
 ```tsx
 <AnimatedOutlet keepAlive />
 <AnimatedOutlet keepAlive transition="cover" />
 ```
 
-前进（PUSH）时背景页保活在 DOM 中；返回（POP）时前景页以动画退出，背景页精确恢复。
+前进（PUSH）时背景页留在 DOM；返回（POP）时前景页退出，背景页精确恢复（包括滚动位置）。
 
-#### Switch 模式（`keepAlive mode="switch"`）
+### Switch 模式（Tab 缓存）
 
-适用于底部导航栏、多标签页等场景：
+适合底部导航栏、多标签页：
 
 ```tsx
 <AnimatedOutlet keepAlive mode="switch" />
 <AnimatedOutlet keepAlive mode="switch" transition="slide" />
 ```
 
-所有访问过的页面按 pathname 缓存，切换时即时显示/隐藏。
+所有访问过的页面按 pathname 缓存，切换时即时显示/隐藏，滚动位置自动保存恢复。
 
-#### 缓存失效机制（仅 switch 模式）
-
-Switch 模式提供三种互补的缓存管理方式：
-
-**`max`：LRU 内存上限**
+**控制缓存大小（LRU）：**
 
 ```tsx
 <AnimatedOutlet keepAlive mode="switch" max={10} />
 ```
 
-超过 `max` 时按 LRU 自动淘汰最老的缓存。不传 `max` 时不限制（固定数量的 Tab 栏天然有界，无需设置）。
+超出 `max` 时自动淘汰最近最少使用的页面。固定 Tab 栏天然有界，一般不需要设置。
 
-**`include`：允许缓存的路由白名单**
-
-只有匹配的路由才会保留在缓存中；不匹配的页面在离开时会被销毁，下次进入重新 mount：
+**白名单 / 黑名单：**
 
 ```tsx
-// 精确匹配路径列表
+// 只缓存这 3 个 Tab，其他页面离开即销毁
 <AnimatedOutlet keepAlive mode="switch" include={['/home', '/profile', '/settings']} />
 
-// 正则匹配
-<AnimatedOutlet keepAlive mode="switch" include={/^\/tabs\//} />
-
-// 自定义函数
-<AnimatedOutlet keepAlive mode="switch" include={(path) => !path.startsWith('/form')} />
-```
-
-**`exclude`：不缓存的路由黑名单**
-
-匹配的路由在离开时立即清除，其他路由正常缓存：
-
-```tsx
-// 一次性页面（表单、确认页等）不缓存
+// 表单类页面不缓存（离开即销毁，避免数据残留）
 <AnimatedOutlet keepAlive mode="switch" exclude={['/checkout', '/payment']} />
 
-// 正则匹配
-<AnimatedOutlet keepAlive mode="switch" exclude={/\/form\//} />
-
-// 自定义函数
-<AnimatedOutlet keepAlive mode="switch" exclude={(path) => path.startsWith('/wizard')} />
+// 正则或自定义函数也可以
+<AnimatedOutlet keepAlive mode="switch" exclude={(path) => path.startsWith('/form')} />
 ```
 
-`include` 与 `exclude` 可同时使用：先过 `include` 白名单，再过 `exclude` 黑名单。
+`include` 与 `exclude` 可同时使用，先过白名单再过黑名单。
 
-#### `aliveRef`：命令式缓存控制（仅 switch 模式）
+### 命令式清除缓存（aliveRef）
 
-需要主动清除缓存（如登出、刷新某页）时使用：
+需要主动清除缓存时使用，比如用户登出：
 
 ```tsx
 import { useRef } from 'react'
-import type { KeepAliveRef } from 'react-router-dom-animate'
 import { AnimatedOutlet } from 'react-router-dom-animate'
+import type { KeepAliveRef } from 'react-router-dom-animate'
 
-function Layout() {
+function TabsLayout() {
   const aliveRef = useRef<KeepAliveRef | undefined>(undefined)
+
+  const handleLogout = () => {
+    aliveRef.current?.removeAll()  // 清除所有缓存
+    navigate('/login')
+  }
 
   return (
     <>
-      <button onClick={() => aliveRef.current?.remove('/profile')}>清除个人页缓存</button>
-      <button onClick={() => aliveRef.current?.removeAll()}>登出 — 清除所有缓存</button>
       <AnimatedOutlet keepAlive mode="switch" aliveRef={aliveRef} />
+      <button onClick={handleLogout}>登出</button>
     </>
   )
 }
@@ -369,80 +239,93 @@ function Layout() {
 | 方法 | 说明 |
 |------|------|
 | `remove(pathname)` | 移除指定 pathname 的缓存，下次访问重新 mount |
-| `removeAll()` | 移除所有非当前活跃页的缓存 |
-| `getCached()` | 返回当前缓存的所有 pathname 列表 |
+| `removeAll()` | 移除所有非当前活跃页的缓存，当前页不受影响 |
+| `getCached()` | 返回当前缓存的所有 pathname（LRU 顺序，末尾为最近访问） |
 
-#### 从路由 `handle` 读取配置
+### 生命周期钩子
 
-无需给每个 `AnimatedOutlet` 手动传 prop，可在路由 `handle` 中统一声明：
-
-```ts
-// routes.tsx
-{
-  path: 'home',
-  handle: { keepAlive: true, transition: 'cover' },
-  element: <HomeLayout />,  // 内部 AnimatedOutlet 无需任何 prop
-}
-// 底部 Tab 场景
-{
-  path: 'tabs',
-  handle: { keepAlive: true, mode: 'switch', transition: 'fade' },
-  element: <TabsLayout />,
-}
-```
-
-prop 的优先级高于 handle，二者可混用。
-
-#### 与 Vue `keepAlive` 的差异
-
-| 行为 | Vue `keepAlive` | React `<Activity>` |
-|------|-----------------|---------------------|
-| 组件状态（state） | ✅ 保留 | ✅ 保留 |
-| DOM / scrollTop | ✅ 保留 | ✅ 保留（含手动 scroll 存取） |
-| `useEffect` | ⏸ 暂停，不清理 | 🔄 隐藏时清理，显示时重跑 |
-| `onActivated` | 专属生命周期 | `useActivated` |
-| `onDeactivated` | 专属生命周期 | `useDeactivated` |
-| video / audio / iframe | ✅ 不受影响 | ⚠️ 隐藏时暂停或重载（见下） |
-
-> **`useEffect` 的实际影响**：轮询、WebSocket 等副作用切走时自动清理，切回时重新建立——通常是更安全的行为。
->
-> **video / audio / iframe 注意**：`<Activity>` 通过 `display:none` 隐藏页面，浏览器会暂停 `<video>`/`<audio>` 播放，`<iframe>` 可能触发重新加载。这是浏览器的底层行为，无法通过 JavaScript 绕过。如果页面包含媒体播放器或内嵌文档，请结合 `useDeactivated` 保存播放进度，在 `useActivated` 中恢复。
-
-### `useActivated` / `useDeactivated`：页面进入与离开的生命周期回调
-
-`keepAlive` 模式下组件不会 remount，通过这两个 hook 可以监听页面的激活与离开：
+`keepAlive` 模式下组件不 remount，用这两个 hook 监听页面进出：
 
 ```tsx
 import { useActivated, useDeactivated } from 'react-router-dom-animate'
 
 function ProfilePage() {
-  const [data, setData] = useState([])
-
-  // 每次页面变为活跃时执行（含首次 mount）
   useActivated(() => {
-    fetch('/api/profile').then(r => r.json()).then(setData)
+    // 每次页面变为活跃时执行，含首次 mount
+    fetchLatestData()
   })
 
-  // 页面离开时执行（隐藏 / 卸载）
   useDeactivated(() => {
-    abortController.abort()
+    // 页面离开（隐藏或卸载）时执行
+    cancelPendingRequests()
   })
-
-  return <Profile data={data} />
 }
 ```
 
-| | keepAlive 模式 | 非 keepAlive |
-|--|--------------|------------|
-| `useActivated` | 每次页面变为活跃时触发（含首次 mount） | 等同 `useEffect(() => cb(), [])` |
-| `useDeactivated` | 页面隐藏 / 整体卸载时触发 | 等同 `useEffect(() => () => cb(), [])` |
+| | keepAlive 模式 | 不用 keepAlive |
+|--|--------------|--------------|
+| `useActivated` | 每次页面变为活跃时触发（含首次 mount） | 等价于 `useEffect(() => cb(), [])` |
+| `useDeactivated` | 页面隐藏 / 整组卸载时触发 | 等价于 `useEffect(() => () => cb(), [])` |
+
+> **注意**：`<Activity>` 通过 `display:none` 隐藏页面。`<video>`/`<audio>` 会暂停，`<iframe>` 可能重载。如有媒体播放器，可在 `useDeactivated` 中保存进度，在 `useActivated` 中恢复。
+
+---
+
+## 自定义动画时长
+
+### 用 CSS 变量（推荐）
+
+```css
+:root {
+  --fr-duration: 300ms;        /* 全局时长（默认 300ms） */
+  --fr-duration-modal: 450ms;  /* 单独覆盖某种动画 */
+  --fr-duration-slide: 280ms;
+}
+```
+
+支持的变量名：`--fr-duration-cover` `--fr-duration-slide` `--fr-duration-fade` `--fr-duration-scale` `--fr-duration-modal`
+
+### 用 JS
+
+```ts
+import { setAnimDuration } from 'react-router-dom-animate'
+
+setAnimDuration('modal', 450)  // 优先级高于 CSS 变量
+```
+
+### 注册自定义动画
+
+```ts
+import { registerAnimPreset } from 'react-router-dom-animate'
+
+registerAnimPreset({
+  type: 'my-flip',
+  forward: {
+    enter: 'flip-enter',
+    enterActive: 'flip-enter-active',
+    exit: 'flip-exit',
+    exitActive: 'flip-exit-active',
+  },
+  back: {
+    enter: 'flip-back-enter',
+    enterActive: 'flip-back-enter-active',
+    exit: 'flip-back-exit',
+    exitActive: 'flip-back-exit-active',
+  },
+  durationMs: 600,
+})
+
+// 注册后和内置动画用法完全一致
+<AnimatedOutlet transition="my-flip" />
+navigate('/page', { state: { transition: 'my-flip' } })
+```
+
+---
 
 ## Demo
 
 ```bash
 npm run demo   # http://localhost:5180
 ```
-
-`/push/*` = 写法 A（`state`），`/wrap/*` = 写法 B（组件 / `handle`）；`/keep-alive` = KeepAlive 完整示例。
 
 MIT

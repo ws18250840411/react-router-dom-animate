@@ -5,6 +5,65 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.0.1] — 2026-07-06
+
+### Fixed
+
+#### `KeepAliveRoot` scroll 监听器 — 5 处淘汰路径未立即解绑（内存泄漏）
+
+- **根因**：`scrollHandlersRef` 在组件体内被声明于 LRU 淘汰循环之后，导致 LRU 路径存在 Temporal Dead Zone（TDZ）访问错误。此外，LRU 淘汰、快速导航清理（`!shouldCache`）、`aliveRef.remove()`、`aliveRef.removeAll()`、`onExited` 非缓存页这 5 个独立的页面移除路径，均未在移除时立即调用 `removeEventListener`，而是依赖下次渲染的兜底清理，导致被淘汰页面的 scroll 监听器在一次渲染周期内泄漏。
+- **修复**：
+  1. 将 `scrollHandlersRef` 声明前移至 `scrollCacheRef` 旁边（在所有淘汰代码之前），消除 TDZ 问题。
+  2. 提取 `detachScrollHandler(scrollHandlers, key)` 纯函数，集中 `removeEventListener` + `Map.delete` 逻辑。
+  3. 在全部 5 处淘汰路径中调用 `detachScrollHandler`，实现即时清理，不再依赖渲染兜底。
+
+#### `KeepAliveRoot.onExited` — `aliveRef.remove()` 在退出动画期间调用留孤立 activityMode 条目
+
+- **根因**：`KeepAliveRoot` 的 `onExited` 回调在判断"是否需要 hidden"时，未检查 key 是否仍在 `keysRef` 中。若用户在退出动画期间通过 `aliveRef.remove()` 移除了该页面，`keysRef` 中已无该 key，但 `onExited` 仍会执行 `activityModesRef.current.set(key, 'hidden')`，导致 `activityModesRef` 中留下孤立条目，属于轻微内存泄漏。
+- **修复**：在 `onExited` 中加入 `if (!keysRef.current.includes(key)) return` 前置守卫，确保对已被移除的 key 直接跳出，不留孤立状态。
+
+### Fixed (Tests)
+
+#### `layout-route.test.tsx` — 废弃 `tabs` prop 替换为 `mode="switch"`
+
+- 该测试文件遗留了在 1.0.0 Breaking Change 中已移除的 `tabs` prop（`<AnimatedOutlet tabs transition="slide" />`）和 `handle: { tabs: true }`。
+- 更新为现行 API：`<AnimatedOutlet mode="switch" transition="slide" />` 和 `handle: { mode: 'switch' }`。
+
+### Performance
+
+#### `KeepAliveRoot` scroll 监听器 — 增量式附加/移除
+
+- **旧逻辑**：`useLayoutEffect`（无 dep 数组）每次渲染都执行 N × `removeEventListener` + N × `addEventListener`（N = 缓存页数量）。对稳定缓存（5–10 个 Tab 页），每次 React 渲染产生 10–20 次不必要的 DOM 操作。
+- **新逻辑**：引入 `scrollHandlersRef`（`Map<key, { handler, container }>`），监听器在页面首次进入缓存时**只附加一次**，在页面被淘汰/移除时**才移除**。对稳定缓存，每次渲染的 DOM 操作数降至 0（仅遍历检查，不执行 add/remove）。
+- 对于渲染频繁的应用（如动画期间高频 re-render），此优化可显著减少 DOM API 调用次数。
+
+### Fixed (Tests)
+
+#### `stress.spec.ts` — 首页矩阵连点用例偶发超时
+
+- `el.click({ force: true })` 在极端压测中会遇到元素在转场期间从 DOM 卸载的情况，Playwright 默认重试 30 s 后超时。
+- 修复：添加 `.catch(() => {})` 与其他压测用例保持一致，忽略 detach 导致的点击失败，不影响测试断言（断言为无残留 `fr-animating` 和无 JS 错误）。
+
+### Tests
+
+#### 新增 `aliveref-max.test.tsx`（15 个用例）
+
+全面覆盖此前没有单元测试的三块 API：
+
+- **`aliveRef` 命令式缓存控制**：
+  - `getCached()` 返回正确的缓存路径列表（初始、多页访问后的 LRU 顺序）
+  - `remove(pathname)` 移除指定页、下次访问重新 mount（state 重置）、对激活页无效
+  - `removeAll()` 清除所有非激活页后仅剩当前页、切回被清除页 state 重置
+- **`max` LRU 淘汰**：
+  - 超出 `max` 时，最旧页被淘汰、不再出现在 `getCached()` 和 DOM
+  - 重新访问被淘汰页重新 mount（LRU 顺序更新保护最新访问的页）
+- **`setAnimDuration`**：
+  - 覆盖 preset 的 `durationMs`（PUSH/POP 方向均生效）
+  - 对未注册 type 调用不崩溃
+- **Bug 回归**：`aliveRef.remove()` 在退出动画期间调用后，无孤立 `activityMode` 条目，目标页最终从 DOM 移除
+
+---
+
 ## [1.0.0] — 2026-07-03
 
 ### Fixed

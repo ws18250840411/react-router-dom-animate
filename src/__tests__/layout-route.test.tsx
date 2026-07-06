@@ -15,7 +15,7 @@ function TabsLayout() {
   return (
     <div data-testid="tabs-layout">
       <main>
-        <AnimatedOutlet tabs transition="slide" />
+        <AnimatedOutlet mode="switch" transition="slide" />
       </main>
       <nav data-testid="tab-nav">
         <Link to="/tabs/a" replace>
@@ -35,7 +35,7 @@ const routes: RouteObject[] = [
     children: [
       {
         path: '/tabs',
-        handle: { transition: 'slide', tabs: true },
+        handle: { transition: 'slide', mode: 'switch' },
         element: <TabsLayout />,
         children: [
           { path: 'a', handle: { tabIndex: 0 }, element: <Page id="tab-a-page" /> },
@@ -125,7 +125,7 @@ describe('layoutRouteId', () => {
       return (
         <div data-testid="tabs-shell">
           <main>
-            <AnimatedOutlet tabs transition="fade" />
+            <AnimatedOutlet mode="switch" transition="fade" />
           </main>
           <nav data-testid="tab-nav">
             <Link to="/home" replace>

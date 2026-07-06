@@ -514,6 +514,18 @@ function shouldCache(pathname: string, include: KeepAliveFilter | undefined, exc
   return true
 }
 
+/** Remove a scroll capture listener that was added by KeepAliveRoot, if any. */
+function detachScrollHandler(
+  scrollHandlers: Map<string, { handler: () => void; container: HTMLElement }>,
+  key: string,
+): void {
+  const entry = scrollHandlers.get(key)
+  if (entry) {
+    entry.container.removeEventListener('scroll', entry.handler, { capture: true })
+    scrollHandlers.delete(key)
+  }
+}
+
 /**
  * Implements `keepAlive={true}` for `<AnimatedOutlet>`.
  *
@@ -576,6 +588,10 @@ function KeepAliveRoot({
   const pendingEnterRef = useRef(new Set<string>())
 
   const scrollCacheRef = useRef(new Map<string, Array<[HTMLElement, number, number]>>())
+  // Stable scroll handler entries: created once per cached page, removed when evicted.
+  // Declared here (not near the useLayoutEffect that uses it) so it is available in the
+  // render-body LRU eviction loop that runs before the useLayoutEffect declarations.
+  const scrollHandlersRef = useRef(new Map<string, { handler: () => void; container: HTMLElement }>())
 
   // Compute transition plan (same as AnimatedRoot for switch mode).
   const fromSnapRef = useRef<RouteSnapshot>(snap(location, matches))
@@ -652,15 +668,22 @@ function KeepAliveRoot({
       scrollCacheRef.current.delete(k)
       activityModesRef.current.delete(k)
       nodeRefsRef.current.delete(k)
+      detachScrollHandler(scrollHandlersRef.current, k)
     }
   }
 
-  // Capture-phase scroll listener on each page container.
+  // Capture-phase scroll listener management: attach/detach only when the cached page set changes.
+  // This is O(1) per render for stable caches instead of O(N) remove+add on every render.
+  //
+  // No cleanup return: listeners are managed explicitly (eviction-driven removal below and in
+  // aliveRef.remove/removeAll/rapid-nav/onExited). DOM elements inside Activity are never replaced
+  // by React (Activity uses display:none, not unmount/remount), so the captured `container`
+  // reference stays valid for the page's lifetime.
   useLayoutEffect(() => {
-    const cleanups: Array<() => void> = []
+    // Attach listeners for newly added pages.
     nodeRefsRef.current.forEach((ref, key) => {
       const container = ref.current
-      if (!container) return
+      if (!container || scrollHandlersRef.current.has(key)) return
       const handler = () => {
         const items: Array<[HTMLElement, number, number]> = []
         ;[container, ...Array.from(container.querySelectorAll<HTMLElement>('*'))].forEach((el) => {
@@ -669,9 +692,16 @@ function KeepAliveRoot({
         scrollCacheRef.current.set(key, items)
       }
       container.addEventListener('scroll', handler, { capture: true, passive: true })
-      cleanups.push(() => container.removeEventListener('scroll', handler, { capture: true }))
+      scrollHandlersRef.current.set(key, { handler, container })
     })
-    return () => cleanups.forEach((c) => c())
+    // Detach listeners for any remaining evicted pages (safety net for paths that
+    // don't call detachScrollHandler directly, e.g. future code changes).
+    scrollHandlersRef.current.forEach(({ handler, container }, key) => {
+      if (!nodeRefsRef.current.has(key)) {
+        container.removeEventListener('scroll', handler, { capture: true })
+        scrollHandlersRef.current.delete(key)
+      }
+    })
   })
 
   // Restore scroll after Activity removes display:none.
@@ -706,6 +736,7 @@ function KeepAliveRoot({
     activityModesRef.current.forEach((mode, key) => {
       if (key !== pageKey && mode === 'visible') {
         if (!shouldCache(key, include, exclude)) {
+          detachScrollHandler(scrollHandlersRef.current, key)
           keysRef.current = keysRef.current.filter((k) => k !== key)
           snapshotsRef.current.delete(key)
           scrollCacheRef.current.delete(key)
@@ -725,6 +756,7 @@ function KeepAliveRoot({
     aliveRef.current = {
       remove(pathname) {
         if (pathname === pageKeyRef.current) return
+        detachScrollHandler(scrollHandlersRef.current, pathname)
         snapshotsRef.current.delete(pathname)
         keysRef.current = keysRef.current.filter((k) => k !== pathname)
         scrollCacheRef.current.delete(pathname)
@@ -736,6 +768,7 @@ function KeepAliveRoot({
         const active = pageKeyRef.current
         for (const k of [...keysRef.current]) {
           if (k !== active) {
+            detachScrollHandler(scrollHandlersRef.current, k)
             snapshotsRef.current.delete(k)
             scrollCacheRef.current.delete(k)
             activityModesRef.current.delete(k)
@@ -784,8 +817,14 @@ function KeepAliveRoot({
                 // Use ref instead of closure `isActive` to avoid stale value when the
                 // page becomes active again before its exit animation finishes (e.g. rapid B→A→B).
                 if (key !== pageKeyRef.current) {
+                  // Guard: if key was already removed (e.g. by aliveRef.remove() called while
+                  // the exit animation was still running), skip entirely. Without this check,
+                  // activityModesRef would gain an orphaned entry for a key that is no longer
+                  // in keysRef, causing a minor memory leak.
+                  if (!keysRef.current.includes(key)) return
                   if (!shouldCache(key, include, exclude)) {
                     // Non-cacheable: remove entirely so next visit re-mounts fresh.
+                    detachScrollHandler(scrollHandlersRef.current, key)
                     keysRef.current = keysRef.current.filter((k) => k !== key)
                     snapshotsRef.current.delete(key)
                     scrollCacheRef.current.delete(key)

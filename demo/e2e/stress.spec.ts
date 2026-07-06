@@ -255,7 +255,8 @@ test.describe('压测 — 全场景快速进出', () => {
       const id = buttons[i % buttons.length]!
       const el = page.getByTestId(id).first()
       if (await el.isVisible()) {
-        await el.click({ force: true })
+        // Ignore detach errors: elements can unmount mid-transition during this stress test.
+        await el.click({ force: true }).catch(() => {})
       }
       await page.waitForTimeout(10)
     }
