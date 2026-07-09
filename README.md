@@ -78,7 +78,7 @@ navigate('/detail/1', { state: { transition: 'cover' } })
   transition="cover"         // 动画类型，见上表
   mode="stack"               // stack（默认）| switch
   keepAlive={false}          // 是否保活页面
-  max={undefined}            // 最大缓存页数（仅 keepAlive + switch 模式）
+  max={15}                   // 最大缓存页数（仅 keepAlive + switch 模式，默认 15）
   include={undefined}        // 缓存白名单（仅 keepAlive + switch 模式）
   exclude={undefined}        // 缓存黑名单（仅 keepAlive + switch 模式）
   aliveRef={undefined}       // 命令式缓存控制（仅 keepAlive + switch 模式）
@@ -91,7 +91,7 @@ navigate('/detail/1', { state: { transition: 'cover' } })
 | `transition` | `string` | `'cover'` | 内置：`cover` `slide` `fade` `scale` `modal` `none`；也可用自定义预设名称 |
 | `mode` | `'stack' \| 'switch'` | `'stack'` | `stack`：栈式压入详情；`switch`：平级切换（Tab）|
 | `keepAlive` | `boolean` | `false` | 保活页面。栈模式保留背景页，Switch 模式缓存所有访问页 |
-| `max` | `number` | 无限制 | 最多缓存多少页，超出按 LRU 淘汰（仅 switch 模式）|
+| `max` | `number` | `15` | 最多缓存多少页，超出按 LRU 淘汰（仅 switch 模式）|
 | `include` | `string[] \| RegExp \| (path) => boolean` | — | 缓存白名单，只有匹配的页面才缓存（仅 switch 模式）|
 | `exclude` | `string[] \| RegExp \| (path) => boolean` | — | 缓存黑名单，匹配的页面离开时立即销毁（仅 switch 模式）|
 | `aliveRef` | `RefObject<KeepAliveRef>` | — | 命令式缓存控制句柄（仅 switch 模式）|
@@ -193,7 +193,7 @@ export function TabsLayout() {
 <AnimatedOutlet keepAlive mode="switch" max={10} />
 ```
 
-超出 `max` 时自动淘汰最近最少使用的页面。固定 Tab 栏天然有界，一般不需要设置。
+超出 `max` 时自动淘汰最近最少使用的页面。默认值 15 覆盖绝大多数 App 的 Tab 场景；页面数量更多时可显式调高，例如 `max={30}`。
 
 **白名单 / 黑名单：**
 

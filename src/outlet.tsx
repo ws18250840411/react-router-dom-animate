@@ -59,7 +59,9 @@ export interface AnimatedOutletProps {
   keepAlive?: boolean
   /**
    * Maximum number of pages to keep in cache simultaneously (LRU eviction).
-   * Only applies when `keepAlive={true}` and `mode="switch"`. Defaults to unlimited.
+   * Only applies when `keepAlive={true}` and `mode="switch"`. Defaults to 15.
+   * When the limit is exceeded, the least-recently-used page is evicted (DOM and
+   * scroll state released). Set higher for apps with many distinct tab destinations.
    */
   max?: number
   /**
@@ -460,7 +462,7 @@ function BackgroundPreserveRoot({
       }
       const touchEndHandler = () => {
         // Unfreeze after 100 ms so click/navigate has time to fire first.
-        setTimeout(() => bgFrozenRef.current.delete(key), 100)
+        window.setTimeout(() => bgFrozenRef.current.delete(key), 100)
       }
 
       container.addEventListener('scroll', handler, { capture: true, passive: true })
@@ -648,7 +650,7 @@ function detachBgScrollHandler(
  * reload — this is a browser-level consequence of display:none.
  */
 function KeepAliveRoot({
-  max,
+  max = 30,
   include,
   exclude,
   aliveRef,

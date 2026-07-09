@@ -78,7 +78,7 @@ Both approaches are equivalent. `navigate(-1)` automatically plays the reverse a
   transition="cover"         // animation type, see table above
   mode="stack"               // stack (default) | switch
   keepAlive={false}          // keep pages alive in the DOM
-  max={undefined}            // max cached pages (keepAlive + switch only)
+  max={15}                   // max cached pages (keepAlive + switch only, default 15)
   include={undefined}        // cache allow-list (keepAlive + switch only)
   exclude={undefined}        // cache deny-list (keepAlive + switch only)
   aliveRef={undefined}       // imperative cache control (keepAlive + switch only)
@@ -91,7 +91,7 @@ Both approaches are equivalent. `navigate(-1)` automatically plays the reverse a
 | `transition` | `string` | `'cover'` | Built-in: `cover` `slide` `fade` `scale` `modal` `none`; or a custom preset name |
 | `mode` | `'stack' \| 'switch'` | `'stack'` | `stack`: push-to-detail; `switch`: flat tab switching |
 | `keepAlive` | `boolean` | `false` | Keep pages alive. Stack mode preserves background pages; switch mode caches all visited pages |
-| `max` | `number` | unlimited | Max cached pages; oldest evicted via LRU (switch mode only) |
+| `max` | `number` | `15` | Max cached pages; oldest evicted via LRU (switch mode only). Increase for apps with many tab destinations |
 | `include` | `string[] \| RegExp \| (path) => boolean` | — | Allow-list: only matching pages are cached (switch mode only) |
 | `exclude` | `string[] \| RegExp \| (path) => boolean` | — | Deny-list: matching pages are destroyed on exit (switch mode only) |
 | `aliveRef` | `RefObject<KeepAliveRef>` | — | Imperative cache control handle (switch mode only) |
