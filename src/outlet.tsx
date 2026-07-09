@@ -59,7 +59,7 @@ export interface AnimatedOutletProps {
   keepAlive?: boolean
   /**
    * Maximum number of pages to keep in cache simultaneously (LRU eviction).
-   * Only applies when `keepAlive={true}` and `mode="switch"`. Defaults to 15.
+   * Only applies when `keepAlive={true}` and `mode="switch"`. Defaults to 30.
    * When the limit is exceeded, the least-recently-used page is evicted (DOM and
    * scroll state released). Set higher for apps with many distinct tab destinations.
    */
