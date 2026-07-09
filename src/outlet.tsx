@@ -470,13 +470,14 @@ function BackgroundPreserveRoot({
         if (saved && container) {
           for (const [el, top, left] of saved) {
             if (!el.isConnected) continue
-            // React Activity uses display:none on the subtree (per React 19 docs).
-            // Most browsers preserve child scrollTop when a *parent* (not the element
-            // itself) gets display:none, so el.scrollTop may already equal `top`.
-            // The !== guard is a no-op in that case and a full restore on browsers
-            // that do reset child scrollTop (cross-browser safety net).
-            if (el.scrollTop !== top) el.scrollTop = top
-            if (el.scrollLeft !== left) el.scrollLeft = left
+            // React Activity uses display:none (per React 19 docs). Most browsers preserve
+            // child scrollTop when only a *parent* gets display:none, so el.scrollTop may
+            // already equal the saved value on return. Only overwrite when the browser has
+            // actually reset the position to 0 — this avoids clobbering a correctly
+            // browser-preserved value with a stale bgScrollsRef in edge cases (e.g.
+            // programmatic navigation where no touchstart fired to update the snapshot).
+            if (el.scrollTop === 0 && top !== 0) el.scrollTop = top
+            if (el.scrollLeft === 0 && left !== 0) el.scrollLeft = left
           }
         }
       })
