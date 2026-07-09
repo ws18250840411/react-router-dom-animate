@@ -205,9 +205,10 @@ function extractPreEnterClass(enterClass: string | undefined): string {
  * its exit animation completes. POP switches it back to `mode="visible"` and plays
  * the enter animation.
  *
- * `display:none` resets scrollTop for nested overflow containers, so scroll positions
- * are saved in `onExited` (while the DOM is still visible) and restored in
- * `useLayoutEffect` after Activity makes the page visible again.
+ * `display:none` resets scrollTop for nested overflow containers. Scroll positions are
+ * tracked via capture-phase listeners (outside Activity, like `KeepAliveRoot`) so the
+ * last recorded value is always the position just before the page went hidden. Restored
+ * in `useLayoutEffect` after Activity makes the page visible again.
  */
 function BackgroundPreserveRoot({
   depth,
@@ -297,9 +298,25 @@ function BackgroundPreserveRoot({
   const [, forceRender] = useReducer((n: number) => n + 1, 0)
   const pendingEnterRef = useRef(new Set<string>())
 
-  // Scroll positions saved in onExited (while DOM is still visible, before display:none).
-  // Restored in useLayoutEffect after POP makes the entry visible again.
+  // Scroll positions continuously tracked via capture-phase scroll listeners (keyed by stableKey).
+  // On iOS, momentum scroll continues on the compositor thread even after the JS navigation fires
+  // and while the exit animation is playing (the page is still Activity visible during animation).
+  // This can shift scrollTop from the user's intended position (e.g. 877) to an unrelated value
+  // (e.g. 310) by the time Activity sets display:none and the scroll resets to 0.
+  //
+  // Fix: capture-phase touchstart fires before any React processing. iOS stops momentum scroll
+  // at the moment the user's finger touches the screen, so scrollTop at touchstart is the
+  // "intended" position. We snapshot bgScrollsRef at that moment and freeze it so subsequent
+  // momentum scroll events during the animation don't overwrite the correct value.
+  // A 100 ms grace period on touchend gives click/navigate events time to fire before unfreezing.
   const bgScrollsRef = useRef(new Map<string, Array<[HTMLElement, number, number]>>())
+  const bgScrollHandlersRef = useRef(new Map<string, {
+    handler: () => void
+    touchStartHandler: () => void
+    touchEndHandler: () => void
+    container: HTMLElement
+  }>())
+  const bgFrozenRef = useRef(new Map<string, boolean>())
   const pendingScrollRestoreRef = useRef(new Set<string>())
 
   const locKey = location.key
@@ -335,6 +352,7 @@ function BackgroundPreserveRoot({
         // stableKey update). Reset — the Activity key (stableKey) may be the same, so React
         // will reconcile without unmounting if it matches.
         for (const e of stackRef.current) {
+          detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, e.stableKey)
           nodeRefsCache.current.delete(e.stableKey)
           bgScrollsRef.current.delete(e.stableKey)
         }
@@ -369,6 +387,7 @@ function BackgroundPreserveRoot({
       // REPLACE with a different stableKey: swap top entry.
       const replaced = stackRef.current[stackRef.current.length - 1]
       if (replaced) {
+        detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, replaced.stableKey)
         nodeRefsCache.current.delete(replaced.stableKey)
         bgScrollsRef.current.delete(replaced.stableKey)
       }
@@ -388,6 +407,56 @@ function BackgroundPreserveRoot({
     )
   }
 
+  // Attach/detach capture-phase scroll + touchstart listeners for alive stack entries.
+  // Runs on every render so new entries get listeners immediately.
+  // touchstart freezes bgScrollsRef at the moment iOS stops momentum scroll (the correct
+  // pre-navigation scroll position). Subsequent scroll events during the exit animation
+  // are ignored until touchend + 100 ms grace period, preventing momentum scroll from
+  // overwriting the correct value with an intermediate animation-phase value.
+  useLayoutEffect(() => {
+    nodeRefsCache.current.forEach((ref, key) => {
+      const container = ref.current
+      if (!container || bgScrollHandlersRef.current.has(key)) return
+
+      const captureScrollState = () => {
+        const items: Array<[HTMLElement, number, number]> = []
+        ;[container, ...Array.from(container.querySelectorAll<HTMLElement>('*'))].forEach((el) => {
+          if (el.scrollTop !== 0 || el.scrollLeft !== 0) items.push([el, el.scrollTop, el.scrollLeft])
+        })
+        return items
+      }
+
+      const handler = () => {
+        if (bgFrozenRef.current.get(key)) return
+        const items = captureScrollState()
+        bgScrollsRef.current.set(key, items)
+      }
+      const touchStartHandler = () => {
+        // iOS stops momentum scroll at touchstart — this is the "intended" scroll position.
+        // Snapshot and freeze so the animation-phase momentum scroll can't overwrite it.
+        const items = captureScrollState()
+        if (items.length > 0) bgScrollsRef.current.set(key, items)
+        bgFrozenRef.current.set(key, true)
+      }
+      const touchEndHandler = () => {
+        // Unfreeze after 100 ms so click/navigate has time to fire first.
+        setTimeout(() => bgFrozenRef.current.delete(key), 100)
+      }
+
+      container.addEventListener('scroll', handler, { capture: true, passive: true })
+      container.addEventListener('touchstart', touchStartHandler, { capture: true, passive: true })
+      container.addEventListener('touchend', touchEndHandler, { capture: true, passive: true })
+      container.addEventListener('touchcancel', touchEndHandler, { capture: true, passive: true })
+      bgScrollHandlersRef.current.set(key, { handler, touchStartHandler, touchEndHandler, container })
+    })
+    // Detach listeners for entries that are no longer in the cache.
+    bgScrollHandlersRef.current.forEach((_, key) => {
+      if (!nodeRefsCache.current.has(key)) {
+        detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, key)
+      }
+    })
+  })
+
   useLayoutEffect(() => {
     if (pendingEnterRef.current.size > 0) {
       pendingEnterRef.current.clear()
@@ -399,10 +468,12 @@ function BackgroundPreserveRoot({
         const container = nodeRefsCache.current.get(sk)?.current
         if (saved && container) {
           for (const [el, top, left] of saved) {
-            if (el.isConnected) {
-              el.scrollTop = top
-              el.scrollLeft = left
-            }
+            if (!el.isConnected) continue
+            // Only restore if the element's scrollTop was reset (Activity used display:none).
+            // When Activity uses visibility:hidden the scrollTop is preserved naturally; restoring
+            // from a potentially stale bgScrollsRef would override the correct value with an old one.
+            if (el.scrollTop === 0 && top !== 0) el.scrollTop = top
+            if (el.scrollLeft === 0 && left !== 0) el.scrollLeft = left
           }
         }
       })
@@ -449,22 +520,15 @@ function BackgroundPreserveRoot({
                 const stableKey = entry.stableKey
                 const current = stackRef.current.find(e => e.stableKey === stableKey)
                 if (!current || !current.alive) {
+                  detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, stableKey)
                   stackRef.current = stackRef.current.filter(e => e.stableKey !== stableKey)
                   nodeRefsCache.current.delete(stableKey)
                   bgScrollsRef.current.delete(stableKey)
                   forceRender()
                 } else {
-                  // Save scroll before display:none resets scrollTop, then go hidden.
-                  const container = entry.nodeRef.current
-                  if (container) {
-                    const scrollables: Array<[HTMLElement, number, number]> = []
-                    ;[container, ...Array.from(container.querySelectorAll<HTMLElement>('*'))].forEach((el) => {
-                      if (el.scrollTop !== 0 || el.scrollLeft !== 0) {
-                        scrollables.push([el, el.scrollTop, el.scrollLeft])
-                      }
-                    })
-                    bgScrollsRef.current.set(stableKey, scrollables)
-                  }
+                  // bgScrollsRef already has the correct pre-navigation position (captured at
+                  // touchstart). Now just hide via Activity — scrollTop will reset to 0 via
+                  // display:none and be restored from bgScrollsRef on the next POP.
                   stackRef.current = stackRef.current.map(e =>
                     e.stableKey === stableKey ? { ...e, activityMode: 'hidden' as const } : e,
                   )
@@ -514,7 +578,7 @@ function shouldCache(pathname: string, include: KeepAliveFilter | undefined, exc
   return true
 }
 
-/** Remove a scroll capture listener that was added by KeepAliveRoot, if any. */
+/** Remove scroll + touch listeners added by KeepAliveRoot, if any. */
 function detachScrollHandler(
   scrollHandlers: Map<string, { handler: () => void; container: HTMLElement }>,
   key: string,
@@ -524,6 +588,23 @@ function detachScrollHandler(
     entry.container.removeEventListener('scroll', entry.handler, { capture: true })
     scrollHandlers.delete(key)
   }
+}
+
+/** Remove scroll + touch listeners added by BackgroundPreserveRoot, if any. */
+function detachBgScrollHandler(
+  bgScrollHandlers: Map<string, { handler: () => void; touchStartHandler: () => void; touchEndHandler: () => void; container: HTMLElement }>,
+  bgFrozen: Map<string, boolean>,
+  key: string,
+): void {
+  const entry = bgScrollHandlers.get(key)
+  if (entry) {
+    entry.container.removeEventListener('scroll', entry.handler, { capture: true })
+    entry.container.removeEventListener('touchstart', entry.touchStartHandler, { capture: true })
+    entry.container.removeEventListener('touchend', entry.touchEndHandler, { capture: true })
+    entry.container.removeEventListener('touchcancel', entry.touchEndHandler, { capture: true })
+    bgScrollHandlers.delete(key)
+  }
+  bgFrozen.delete(key)
 }
 
 /**
