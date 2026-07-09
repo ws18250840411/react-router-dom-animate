@@ -313,7 +313,7 @@ function BackgroundPreserveRoot({
   // position when a POP restoration runs.
   const bgScrollsRef = useRef(new Map<string, Array<[HTMLElement, number, number]>>())
   const bgScrollHandlersRef = useRef(new Map<string, {
-    handler: () => void
+    handler: (event: Event) => void
     touchStartHandler: () => void
     touchEndHandler: () => void
     container: HTMLElement
@@ -419,24 +419,43 @@ function BackgroundPreserveRoot({
       const container = ref.current
       if (!container || bgScrollHandlersRef.current.has(key)) return
 
-      const captureScrollState = () => {
-        const items: Array<[HTMLElement, number, number]> = []
-        ;[container, ...Array.from(container.querySelectorAll<HTMLElement>('*'))].forEach((el) => {
-          if (el.scrollTop !== 0 || el.scrollLeft !== 0) items.push([el, el.scrollTop, el.scrollLeft])
-        })
-        return items
-      }
-
-      const handler = () => {
+      // Use event.target (O(1)) instead of querySelectorAll('*') (O(total DOM nodes)).
+      // The scroll event's target is exactly the element that scrolled, so we only
+      // read/update that one element rather than scanning the whole subtree on every frame.
+      const handler = (event: Event) => {
         if (bgFrozenRef.current.get(key)) return
-        const items = captureScrollState()
-        bgScrollsRef.current.set(key, items)
+        const el = event.target as HTMLElement | null
+        if (!el) return
+        let cache = bgScrollsRef.current.get(key)
+        if (!cache) {
+          if (el.scrollTop === 0 && el.scrollLeft === 0) return
+          cache = []
+          bgScrollsRef.current.set(key, cache)
+        }
+        const idx = cache.findIndex(([e]) => e === el)
+        if (el.scrollTop !== 0 || el.scrollLeft !== 0) {
+          if (idx >= 0) {
+            cache[idx] = [el, el.scrollTop, el.scrollLeft]
+          } else {
+            cache.push([el, el.scrollTop, el.scrollLeft])
+          }
+        } else if (idx >= 0) {
+          cache.splice(idx, 1)
+        }
       }
       const touchStartHandler = () => {
-        // iOS stops momentum scroll at touchstart — this is the "intended" scroll position.
-        // Snapshot and freeze so the animation-phase momentum scroll can't overwrite it.
-        const items = captureScrollState()
-        if (items.length > 0) bgScrollsRef.current.set(key, items)
+        // iOS stops momentum scroll at touchstart. Re-read the current position of every
+        // already-tracked element — this captures the settled value without a querySelectorAll.
+        // Then freeze so animation-phase momentum events can't overwrite the correct value.
+        const cache = bgScrollsRef.current.get(key)
+        if (cache?.length) {
+          for (let i = cache.length - 1; i >= 0; i--) {
+            const el = cache[i][0]
+            if (!el.isConnected) { cache.splice(i, 1); continue }
+            cache[i] = [el, el.scrollTop, el.scrollLeft]
+          }
+          bgScrollsRef.current.set(key, cache.filter(([, t, l]) => t !== 0 || l !== 0))
+        }
         bgFrozenRef.current.set(key, true)
       }
       const touchEndHandler = () => {
@@ -584,7 +603,7 @@ function shouldCache(pathname: string, include: KeepAliveFilter | undefined, exc
 
 /** Remove scroll + touch listeners added by KeepAliveRoot, if any. */
 function detachScrollHandler(
-  scrollHandlers: Map<string, { handler: () => void; container: HTMLElement }>,
+  scrollHandlers: Map<string, { handler: (event: Event) => void; container: HTMLElement }>,
   key: string,
 ): void {
   const entry = scrollHandlers.get(key)
@@ -596,7 +615,7 @@ function detachScrollHandler(
 
 /** Remove scroll + touch listeners added by BackgroundPreserveRoot, if any. */
 function detachBgScrollHandler(
-  bgScrollHandlers: Map<string, { handler: () => void; touchStartHandler: () => void; touchEndHandler: () => void; container: HTMLElement }>,
+  bgScrollHandlers: Map<string, { handler: (event: Event) => void; touchStartHandler: () => void; touchEndHandler: () => void; container: HTMLElement }>,
   bgFrozen: Map<string, boolean>,
   key: string,
 ): void {
@@ -676,7 +695,7 @@ function KeepAliveRoot({
   // Stable scroll handler entries: created once per cached page, removed when evicted.
   // Declared here (not near the useLayoutEffect that uses it) so it is available in the
   // render-body LRU eviction loop that runs before the useLayoutEffect declarations.
-  const scrollHandlersRef = useRef(new Map<string, { handler: () => void; container: HTMLElement }>())
+  const scrollHandlersRef = useRef(new Map<string, { handler: (event: Event) => void; container: HTMLElement }>())
 
   // Compute transition plan (same as AnimatedRoot for switch mode).
   const fromSnapRef = useRef<RouteSnapshot>(snap(location, matches))
@@ -769,12 +788,27 @@ function KeepAliveRoot({
     nodeRefsRef.current.forEach((ref, key) => {
       const container = ref.current
       if (!container || scrollHandlersRef.current.has(key)) return
-      const handler = () => {
-        const items: Array<[HTMLElement, number, number]> = []
-        ;[container, ...Array.from(container.querySelectorAll<HTMLElement>('*'))].forEach((el) => {
-          if (el.scrollTop !== 0 || el.scrollLeft !== 0) items.push([el, el.scrollTop, el.scrollLeft])
-        })
-        scrollCacheRef.current.set(key, items)
+      // Use event.target (O(1)) instead of querySelectorAll('*') (O(total DOM nodes)).
+      // Incrementally track only the elements that have actually scrolled.
+      const handler = (event: Event) => {
+        const el = event.target as HTMLElement | null
+        if (!el) return
+        let cache = scrollCacheRef.current.get(key)
+        if (!cache) {
+          if (el.scrollTop === 0 && el.scrollLeft === 0) return
+          cache = []
+          scrollCacheRef.current.set(key, cache)
+        }
+        const idx = cache.findIndex(([e]) => e === el)
+        if (el.scrollTop !== 0 || el.scrollLeft !== 0) {
+          if (idx >= 0) {
+            cache[idx] = [el, el.scrollTop, el.scrollLeft]
+          } else {
+            cache.push([el, el.scrollTop, el.scrollLeft])
+          }
+        } else if (idx >= 0) {
+          cache.splice(idx, 1)
+        }
       }
       container.addEventListener('scroll', handler, { capture: true, passive: true })
       scrollHandlersRef.current.set(key, { handler, container })
