@@ -298,17 +298,19 @@ function BackgroundPreserveRoot({
   const [, forceRender] = useReducer((n: number) => n + 1, 0)
   const pendingEnterRef = useRef(new Set<string>())
 
-  // Scroll positions continuously tracked via capture-phase scroll listeners (keyed by stableKey).
-  // On iOS, momentum scroll continues on the compositor thread even after the JS navigation fires
-  // and while the exit animation is playing (the page is still Activity visible during animation).
-  // This can shift scrollTop from the user's intended position (e.g. 877) to an unrelated value
-  // (e.g. 310) by the time Activity sets display:none and the scroll resets to 0.
+  // Scroll positions are tracked via capture-phase scroll listeners (keyed by stableKey).
   //
-  // Fix: capture-phase touchstart fires before any React processing. iOS stops momentum scroll
-  // at the moment the user's finger touches the screen, so scrollTop at touchstart is the
-  // "intended" position. We snapshot bgScrollsRef at that moment and freeze it so subsequent
-  // momentum scroll events during the animation don't overwrite the correct value.
-  // A 100 ms grace period on touchend gives click/navigate events time to fire before unfreezing.
+  // iOS-specific concern: momentum scroll continues on the compositor thread while the exit
+  // animation plays (the outgoing page is still Activity-visible during the animation). This
+  // can shift scrollTop from the user's intended position (877) to an intermediate value (310)
+  // by the time the page is hidden — even though the user never scrolled to 310 intentionally.
+  //
+  // Solution: capture-phase touchstart fires synchronously before any React processing. iOS
+  // stops momentum scroll the instant the user's finger touches the screen, so the scrollTop
+  // at touchstart is the correct "intended" resting position. We snapshot bgScrollsRef at that
+  // moment and freeze updates for 100 ms after touchend, giving the click/navigate event time
+  // to fire before unfreezing. This ensures bgScrollsRef always holds the pre-navigation
+  // position when a POP restoration runs.
   const bgScrollsRef = useRef(new Map<string, Array<[HTMLElement, number, number]>>())
   const bgScrollHandlersRef = useRef(new Map<string, {
     handler: () => void
@@ -407,12 +409,11 @@ function BackgroundPreserveRoot({
     )
   }
 
-  // Attach/detach capture-phase scroll + touchstart listeners for alive stack entries.
-  // Runs on every render so new entries get listeners immediately.
-  // touchstart freezes bgScrollsRef at the moment iOS stops momentum scroll (the correct
-  // pre-navigation scroll position). Subsequent scroll events during the exit animation
-  // are ignored until touchend + 100 ms grace period, preventing momentum scroll from
-  // overwriting the correct value with an intermediate animation-phase value.
+  // Attach/detach scroll + touch listeners for alive stack entries (capture phase, outside Activity).
+  // Runs on every render so newly pushed entries get listeners immediately.
+  // The touchstart handler snapshots and freezes bgScrollsRef at the moment iOS stops momentum
+  // (the "intended" scroll position), preventing the animation-phase momentum scroll from
+  // overwriting it with an intermediate value before the page is hidden.
   useLayoutEffect(() => {
     nodeRefsCache.current.forEach((ref, key) => {
       const container = ref.current
@@ -469,11 +470,13 @@ function BackgroundPreserveRoot({
         if (saved && container) {
           for (const [el, top, left] of saved) {
             if (!el.isConnected) continue
-            // Only restore if the element's scrollTop was reset (Activity used display:none).
-            // When Activity uses visibility:hidden the scrollTop is preserved naturally; restoring
-            // from a potentially stale bgScrollsRef would override the correct value with an old one.
-            if (el.scrollTop === 0 && top !== 0) el.scrollTop = top
-            if (el.scrollLeft === 0 && left !== 0) el.scrollLeft = left
+            // React Activity uses display:none on the subtree (per React 19 docs).
+            // Most browsers preserve child scrollTop when a *parent* (not the element
+            // itself) gets display:none, so el.scrollTop may already equal `top`.
+            // The !== guard is a no-op in that case and a full restore on browsers
+            // that do reset child scrollTop (cross-browser safety net).
+            if (el.scrollTop !== top) el.scrollTop = top
+            if (el.scrollLeft !== left) el.scrollLeft = left
           }
         }
       })
