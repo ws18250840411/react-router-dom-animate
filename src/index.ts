@@ -4,8 +4,8 @@ import { warmDurationMs } from './transition'
 
 warmDurationMs()
 
-export { default as AnimatedOutlet, useActivated, useDeactivated } from './outlet'
-export type { AnimatedOutletProps } from './outlet'
+export { default as AnimatedOutlet, KeepAlive, useActivated, useDeactivated } from './outlet'
+export type { AnimatedOutletProps, KeepAliveProps } from './outlet'
 
 export { registerAnimPreset, setAnimDuration, warmDurationMs } from './transition'
 

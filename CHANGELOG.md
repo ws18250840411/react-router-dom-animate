@@ -5,6 +5,78 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.1.0] — 2026-07-10
+
+### Added
+
+#### `<KeepAlive>` 组件 — Vue 风格的缓存声明方式
+
+新增 `<KeepAlive>` 组件，作为启用页面保活的**推荐方式**。将需要缓存的 `<AnimatedOutlet>` 包裹在 `<KeepAlive>` 内，直观地表达"这里需要保活"，与 Vue 的 `<KeepAlive><RouterView /></KeepAlive>` 设计对称：
+
+```tsx
+// Tab 缓存（switch 模式）
+<KeepAlive mode="switch" max={10} aliveRef={aliveRef}>
+  <AnimatedOutlet transition="cover" />
+</KeepAlive>
+
+// 列表→详情→返回（stack 模式，默认）
+<KeepAlive>
+  <AnimatedOutlet transition="cover" />
+</KeepAlive>
+```
+
+**设计原则：**
+- `<AnimatedOutlet>` 只负责动画，`<KeepAlive>` 只负责缓存策略，关注点分离
+- 嵌套 `<KeepAlive>` 完全独立，内层覆盖外层（最近祖先优先），互不影响
+- 通过 `KeepAliveContext` 传递配置，`AnimatedOutlet` 自动读取，零运行时开销
+- `include` / `exclude` 内部通过 `useRef` 存储，即使用户传入内联函数，Context value 也保持稳定，`AnimatedOutlet` 不会因此额外重渲染
+
+**`KeepAlive` Props：**
+
+| Prop | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `mode` | `'stack' \| 'switch'` | `'stack'` | 缓存模式 |
+| `max` | `number` | `30` | 最大缓存页数（LRU，仅 switch 模式）|
+| `include` | `string[] \| RegExp \| (path) => boolean` | — | 缓存白名单（仅 switch 模式）|
+| `exclude` | `string[] \| RegExp \| (path) => boolean` | — | 缓存黑名单（仅 switch 模式）|
+| `aliveRef` | `RefObject<KeepAliveRef>` | — | 命令式缓存控制（仅 switch 模式）|
+
+### Performance
+
+#### `<KeepAlive>` — `include` / `exclude` 通过 Ref 稳定 Context
+
+- **旧逻辑**：`include` / `exclude` 直接作为 `useMemo` 的依赖项。若用户传入内联函数（`exclude={(p) => ...}`），每次父组件重渲染都会生成新函数引用，导致 Context value 重建，进而使所有 `AnimatedOutlet` 消费者重渲染。
+- **新逻辑**：`include` / `exclude` 通过 `useRef` 存储，Ref 对象本身引用稳定；Context value 的 `useMemo` 只依赖 `[mode, max, aliveRef]`，三者在典型用法中均不会变化。`KeepAliveRoot` 在每次导航时自然重渲染，届时从 Ref 读取最新的过滤函数，行为完全正确。
+- **效果**：无论用户是否使用内联函数，`AnimatedOutlet` 均不再因 `include`/`exclude` 变化而产生额外重渲染。
+
+### Breaking Changes
+
+#### `AnimatedOutletProps` — 移除 keepAlive 相关 Props
+
+以下 props 已从 `AnimatedOutletProps` 中移除，统一迁移至 `<KeepAlive>` 组件：
+
+- `keepAlive?: boolean` → 改用 `<KeepAlive>` 包裹
+- `max?: number` → 移至 `<KeepAlive max={...}>`
+- `include?: KeepAliveFilter` → 移至 `<KeepAlive include={...}>`
+- `exclude?: KeepAliveFilter` → 移至 `<KeepAlive exclude={...}>`
+- `aliveRef?: RefObject<KeepAliveRef>` → 移至 `<KeepAlive aliveRef={...}>`
+
+**迁移示例：**
+
+```tsx
+// 旧
+<AnimatedOutlet keepAlive mode="switch" max={5} aliveRef={aliveRef} transition="cover" />
+
+// 新
+<KeepAlive mode="switch" max={5} aliveRef={aliveRef}>
+  <AnimatedOutlet transition="cover" />
+</KeepAlive>
+```
+
+> **注意**：通过路由 `handle: { keepAlive: true }` 配置的方式仍然有效（无需迁移），适用于不使用 `<KeepAlive>` 包裹的栈模式场景。
+
+---
+
 ## [1.0.1] — 2026-07-06
 
 ### Fixed

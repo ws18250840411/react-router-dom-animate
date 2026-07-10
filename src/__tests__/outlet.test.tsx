@@ -14,7 +14,7 @@ import {
   type RouteObject,
 } from 'react-router-dom'
 
-import { AnimatedOutlet, useActivated, useDeactivated } from '../index'
+import { AnimatedOutlet, KeepAlive, useActivated, useDeactivated } from '../index'
 
 afterEach(() => cleanup())
 
@@ -240,7 +240,9 @@ describe('keepAlive switch + slide 动画（快速切换）', () => {
             <NavLink to="/tabs/a" replace data-testid="nav-a">A</NavLink>
             <NavLink to="/tabs/b" replace data-testid="nav-b">B</NavLink>
           </nav>
-          <AnimatedOutlet keepAlive mode="switch" transition="slide" />
+          <KeepAlive mode="switch">
+            <AnimatedOutlet transition="slide" />
+          </KeepAlive>
         </>
       )
     }
@@ -424,7 +426,9 @@ describe('keepAlive switch + cover/modal 方向（需 tabIndex 配置）', () =>
             <NavLink to="/tabs/a" replace data-testid="nav-a">A</NavLink>
             <NavLink to="/tabs/b" replace data-testid="nav-b">B</NavLink>
           </nav>
-          <AnimatedOutlet keepAlive mode="switch" transition={anim} />
+          <KeepAlive mode="switch">
+            <AnimatedOutlet transition={anim} />
+          </KeepAlive>
         </>
       )
     }
@@ -787,7 +791,7 @@ describe('AnimatedOutlet keepAlive mode="switch"', () => {
       return (
         <>
           <button type="button" data-testid="go-b" onClick={() => navigate('/ka/b', { replace: true })}>B</button>
-          <AnimatedOutlet mode="switch" keepAlive />
+          <KeepAlive mode="switch"><AnimatedOutlet /></KeepAlive>
         </>
       )
     }
@@ -842,7 +846,7 @@ describe('AnimatedOutlet keepAlive mode="switch"', () => {
         <>
           <button type="button" data-testid="go-b" onClick={() => navigate('/ka2/b', { replace: true })}>B</button>
           <button type="button" data-testid="go-a" onClick={() => navigate('/ka2/a', { replace: true })}>A</button>
-          <AnimatedOutlet mode="switch" keepAlive />
+          <KeepAlive mode="switch"><AnimatedOutlet /></KeepAlive>
         </>
       )
     }
@@ -903,7 +907,7 @@ describe('useActivated / useDeactivated hooks', () => {
         <>
           <button type="button" data-testid="go-a" onClick={() => navigate('/act/a', { replace: true })}>A</button>
           <button type="button" data-testid="go-b" onClick={() => navigate('/act/b', { replace: true })}>B</button>
-          <AnimatedOutlet mode="switch" keepAlive />
+          <KeepAlive mode="switch"><AnimatedOutlet /></KeepAlive>
         </>
       )
     }
@@ -971,7 +975,7 @@ describe('useActivated / useDeactivated hooks', () => {
         <>
           <button type="button" data-testid="go-a" onClick={() => navigate('/deact/a', { replace: true })}>A</button>
           <button type="button" data-testid="go-b" onClick={() => navigate('/deact/b', { replace: true })}>B</button>
-          <AnimatedOutlet mode="switch" keepAlive />
+          <KeepAlive mode="switch"><AnimatedOutlet /></KeepAlive>
         </>
       )
     }
@@ -1024,7 +1028,7 @@ describe('useActivated / useDeactivated hooks', () => {
     }
 
     function TabsLayout() {
-      return <AnimatedOutlet mode="switch" keepAlive />
+      return <KeepAlive mode="switch"><AnimatedOutlet /></KeepAlive>
     }
 
     function Root() {
@@ -1079,7 +1083,7 @@ describe('useActivated / useDeactivated hooks', () => {
         children: [
           {
             path: '/strict-deact',
-            element: <AnimatedOutlet mode="switch" keepAlive />,
+            element: <KeepAlive mode="switch"><AnimatedOutlet /></KeepAlive>,
             children: [{ path: 'a', element: <TabA /> }],
           },
         ],
@@ -1343,7 +1347,9 @@ describe('keepAlive switch — include/exclude 过滤', () => {
           <button type="button" data-testid="go-b" onClick={() => navigate('/sw/b', { replace: true })}>B</button>
           <button type="button" data-testid="go-c" onClick={() => navigate('/sw/c', { replace: true })}>C</button>
         </nav>
-        <AnimatedOutlet keepAlive mode="switch" include={include} exclude={exclude} />
+        <KeepAlive mode="switch" include={include} exclude={exclude}>
+          <AnimatedOutlet />
+        </KeepAlive>
       </>
     )
   }
@@ -1427,7 +1433,9 @@ describe('keepAlive switch — include/exclude 过滤', () => {
             <button type="button" data-testid="go-a2" onClick={() => navigate('/sw2/a', { replace: true })}>A</button>
             <button type="button" data-testid="go-b2" onClick={() => navigate('/sw2/b', { replace: true })}>B</button>
           </nav>
-          <AnimatedOutlet keepAlive mode="switch" include={/^\/sw2\/a$/} />
+          <KeepAlive mode="switch" include={/^\/sw2\/a$/}>
+            <AnimatedOutlet />
+          </KeepAlive>
         </>
       )
     }
@@ -1465,11 +1473,9 @@ describe('keepAlive switch — include/exclude 过滤', () => {
             <button type="button" data-testid="go-a3" onClick={() => navigate('/sw3/a', { replace: true })}>A</button>
             <button type="button" data-testid="go-b3" onClick={() => navigate('/sw3/b', { replace: true })}>B</button>
           </nav>
-          <AnimatedOutlet
-            keepAlive
-            mode="switch"
-            exclude={(path) => path.startsWith('/sw3/b')}
-          />
+          <KeepAlive mode="switch" exclude={(path: string) => path.startsWith('/sw3/b')}>
+            <AnimatedOutlet />
+          </KeepAlive>
         </>
       )
     }

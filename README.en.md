@@ -1,6 +1,7 @@
 # react-router-dom-animate
 
-Lightweight stack-based page transitions for [react-router-dom](https://reactrouter.com/) v7+, powered by React 19's [`<Activity>`](https://react.dev/reference/react/Activity).
+Smooth, production-ready page transitions and keep-alive caching for [react-router-dom](https://reactrouter.com/) v7+.  
+Powered by React 19's [`<Activity>`](https://react.dev/reference/react/Activity) — no third-party runtime, zero magic.
 
 **Install**
 
@@ -12,102 +13,63 @@ npm install react-router-dom-animate
 
 ---
 
-## Getting Started
+## Quick Start (30 seconds)
 
-### Step 1: Replace `<Outlet />` with `<AnimatedOutlet />`
-
-In your root layout (the component that renders `<Outlet />`):
+Replace `<Outlet />` with `<AnimatedOutlet />` in your root layout:
 
 ```tsx
-// layout.tsx (or root.tsx)
+// layout.tsx
 import { AnimatedOutlet } from 'react-router-dom-animate'
 
 export function RootLayout() {
   return (
     <div>
-      {/* header, sidebar, etc. stay the same */}
-      <AnimatedOutlet />  {/* ← only change this */}
+      <AnimatedOutlet />  {/* ← that's it */}
     </div>
   )
 }
 ```
 
-Done. All child pages now have a default `cover` (iOS-style slide-over) animation.
-
-### Step 2: Set a transition
-
-**Easiest way** — declare it on the route:
-
-```tsx
-// routes.tsx
-{
-  path: 'detail/:id',
-  element: (
-    <AnimatedOutlet transition="cover">
-      <DetailPage />
-    </AnimatedOutlet>
-  ),
-}
-```
-
-**Or per-navigation** (when you don't want to touch routes):
-
-```tsx
-navigate('/detail/1', { state: { transition: 'cover' } })
-```
-
-Both approaches are equivalent. `navigate(-1)` automatically plays the reverse animation — no extra config needed.
-
-### Step 3: Pick an animation
-
-| Animation | Effect |
-|-----------|--------|
-| `cover` | New page slides in from the right and covers the old one (iOS style), **default** |
-| `slide` | Both pages slide in the same direction (Android style) |
-| `fade` | Cross-fade |
-| `scale` | Zoom in/out |
-| `modal` | Slides up from the bottom (for sheet-style overlays) |
-| `none` | Instant switch, no animation |
+Every child page now animates with an iOS-style `cover` slide. **No other config needed.**
 
 ---
 
-## Props Reference
+## Animations
+
+| Type | Effect | Use for |
+|------|--------|---------|
+| `cover` | New page slides in from the right, covers the old one | Drill-down navigation (**default**) |
+| `slide` | Both pages slide together in the same direction | Android-style navigation |
+| `fade` | Cross-fade | Smooth, subtle transitions |
+| `scale` | Zoom in/out | Dashboard → detail |
+| `modal` | Slides up from the bottom | Sheets, bottom drawers |
+| `none` | Instant switch | Tabs (no animation) |
+
+**Set the animation two ways:**
 
 ```tsx
-<AnimatedOutlet
-  transition="cover"         // animation type, see table above
-  mode="stack"               // stack (default) | switch
-  keepAlive={false}          // keep pages alive in the DOM
-  max={30}                   // max cached pages (keepAlive + switch only, default 30)
-  include={undefined}        // cache allow-list (keepAlive + switch only)
-  exclude={undefined}        // cache deny-list (keepAlive + switch only)
-  aliveRef={undefined}       // imperative cache control (keepAlive + switch only)
-  className={undefined}      // extra class added to the outer container
-/>
+// Option A: on the route (applied automatically for that page)
+{ path: 'detail/:id', handle: { transition: 'cover' }, element: <DetailPage /> }
+
+// Option B: at navigation time (no route changes required)
+navigate('/detail/1', { state: { transition: 'cover' } })
 ```
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `transition` | `string` | `'cover'` | Built-in: `cover` `slide` `fade` `scale` `modal` `none`; or a custom preset name |
-| `mode` | `'stack' \| 'switch'` | `'stack'` | `stack`: push-to-detail; `switch`: flat tab switching |
-| `keepAlive` | `boolean` | `false` | Keep pages alive. Stack mode preserves background pages; switch mode caches all visited pages |
-| `max` | `number` | `30` | Max cached pages; oldest evicted via LRU (switch mode only). Increase for apps with many tab destinations |
-| `include` | `string[] \| RegExp \| (path) => boolean` | — | Allow-list: only matching pages are cached (switch mode only) |
-| `exclude` | `string[] \| RegExp \| (path) => boolean` | — | Deny-list: matching pages are destroyed on exit (switch mode only) |
-| `aliveRef` | `RefObject<KeepAliveRef>` | — | Imperative cache control handle (switch mode only) |
-| `className` | `string` | — | Added to the `.animated-outlet-group` wrapper |
-
-> **Config via route `handle`** (avoids repeating props on every `AnimatedOutlet`):
->
-> ```ts
-> { path: 'detail', handle: { transition: 'cover', keepAlive: true }, element: <Layout /> }
-> ```
+Back navigation (`navigate(-1)`) plays the reverse animation automatically.
 
 ---
 
 ## Tab Navigation
 
-### Basic tabs (instant switch, no animation)
+Three levels — pick the one that fits:
+
+| Need | How | Notes |
+|------|-----|-------|
+| Instant switch, no animation | `<AnimatedOutlet mode="switch" />` | Simplest |
+| Switch with animation | `<AnimatedOutlet mode="switch" transition="slide" />` | Re-renders on every switch |
+| **Switch with animation + state preserved** ✅ | `<KeepAlive mode="switch">` | Recommended for real apps |
+
+### Route setup (works for all three options)
 
 ```tsx
 // routes.tsx
@@ -115,121 +77,157 @@ Both approaches are equivalent. `navigate(-1)` automatically plays the reverse a
   path: 'tabs',
   element: <TabsLayout />,
   children: [
-    { path: 'home',    element: <HomeTab /> },
-    { path: 'profile', element: <ProfileTab /> },
+    { path: 'home',     handle: { tabIndex: 0 }, element: <HomeTab /> },
+    { path: 'discover', handle: { tabIndex: 1 }, element: <DiscoverTab /> },
+    { path: 'profile',  handle: { tabIndex: 2 }, element: <ProfileTab /> },
   ],
 }
 ```
 
+> `tabIndex` tells `slide` / `cover` which direction to animate (lower → higher = right). Omit it and directional animations fall back to `fade`.
+
+### TabsLayout — choose one of three patterns
+
 ```tsx
 // TabsLayout.tsx
 import { NavLink } from 'react-router-dom'
-import { AnimatedOutlet } from 'react-router-dom-animate'
+import { AnimatedOutlet, KeepAlive } from 'react-router-dom-animate'
 
 export function TabsLayout() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* content area */}
+
+      {/* Content area — pick one: */}
       <main style={{ flex: 1, overflow: 'hidden' }}>
+
+        {/* Option A: no animation */}
         <AnimatedOutlet mode="switch" />
+
+        {/* Option B: animation, but tabs re-render on every switch */}
+        <AnimatedOutlet mode="switch" transition="slide" />
+
+        {/* Option C: animation + state preserved (recommended)
+            Switching away keeps the tab alive in memory.
+            State, scroll position, and DOM are restored instantly on return. */}
+        <KeepAlive mode="switch">
+          <AnimatedOutlet transition="slide" />
+        </KeepAlive>
+
       </main>
-      {/* tab bar goes OUTSIDE AnimatedOutlet */}
+
+      {/* Tab bar lives OUTSIDE the outlet — it never participates in transitions */}
       <nav style={{ display: 'flex', borderTop: '1px solid #eee' }}>
-        <NavLink to="/tabs/home"    replace style={{ flex: 1, textAlign: 'center', padding: 12 }}>Home</NavLink>
-        <NavLink to="/tabs/profile" replace style={{ flex: 1, textAlign: 'center', padding: 12 }}>Profile</NavLink>
+        <NavLink to="/tabs/home"     replace style={{ flex: 1, textAlign: 'center', padding: 12 }}>Home</NavLink>
+        <NavLink to="/tabs/discover" replace style={{ flex: 1, textAlign: 'center', padding: 12 }}>Discover</NavLink>
+        <NavLink to="/tabs/profile"  replace style={{ flex: 1, textAlign: 'center', padding: 12 }}>Profile</NavLink>
       </nav>
+
     </div>
   )
 }
 ```
 
-> **Key point**: `nav` and `<AnimatedOutlet>` are siblings — the tab bar does not participate in transitions.
+### Supported tab animations
 
-### Animated tabs
-
-```tsx
-<AnimatedOutlet mode="switch" transition="fade" />   {/* cross-fade */}
-<AnimatedOutlet mode="switch" transition="slide" />  {/* left/right slide */}
-```
-
-`transition="slide"` requires `tabIndex` in each tab's `handle` — otherwise direction is ambiguous and falls back to `fade`:
-
-```tsx
-{ path: 'home',    handle: { tabIndex: 0 }, element: <HomeTab /> }
-{ path: 'profile', handle: { tabIndex: 1 }, element: <ProfileTab /> }
-```
+| Animation | Effect | Requires `tabIndex` |
+|-----------|--------|---------------------|
+| *(none)* | Instant switch | No |
+| `fade` | Cross-fade | No |
+| `slide` | Directional left/right slide | **Yes** |
+| `cover` | iOS-style directional cover | **Yes** |
+| `scale` | Zoom | No |
 
 ---
 
-## keepAlive
+## Keep-Alive
 
-Switching pages does **not** remount the component — state, DOM nodes, and scroll positions are fully preserved. Powered by React 19's official `<Activity>` — no third-party dependencies.
-
-### Stack mode (list → detail)
-
-For list → detail → back-to-list navigation:
+Wrap `<AnimatedOutlet>` with `<KeepAlive>` to preserve page state across navigations.  
+Think of it as React Router's equivalent of Vue's `<KeepAlive><RouterView /></KeepAlive>`.
 
 ```tsx
-<AnimatedOutlet keepAlive />
-<AnimatedOutlet keepAlive transition="cover" />
+import { AnimatedOutlet, KeepAlive } from 'react-router-dom-animate'
 ```
 
-On PUSH the background page stays alive in the DOM. On POP the foreground page exits and the background is restored exactly (including scroll position).
+### Stack mode — list → detail → back
 
-### Switch mode (tab cache)
-
-For bottom navigation bars and multi-tab UIs:
+When the user drills into a detail page and comes back, the list page is **exactly as they left it** (scroll position, form state, everything):
 
 ```tsx
-<AnimatedOutlet keepAlive mode="switch" />
-<AnimatedOutlet keepAlive mode="switch" transition="slide" />
+// ListLayout.tsx
+<KeepAlive>
+  <AnimatedOutlet transition="cover" />
+</KeepAlive>
 ```
 
-All visited pages are cached by pathname. Scroll positions are automatically saved and restored.
+On PUSH: the list page stays alive in the background.  
+On POP: the detail page exits with animation, the list page is instantly revealed.
 
-**Limit cache size (LRU):**
+### Switch mode — tab caching
+
+All visited tabs are cached by pathname. Switching between tabs is instant and stateful:
 
 ```tsx
-<AnimatedOutlet keepAlive mode="switch" max={10} />
+// TabsLayout.tsx
+<KeepAlive mode="switch">
+  <AnimatedOutlet transition="slide" />
+</KeepAlive>
 ```
 
-When over `max`, the least recently used page is evicted. A fixed tab bar is naturally bounded, so `max` is optional there.
+**Limit cache size (LRU eviction):**
+
+```tsx
+<KeepAlive mode="switch" max={10}>
+  <AnimatedOutlet />
+</KeepAlive>
+```
+
+When over `max`, the least-recently-used page is evicted. Default is 30, which covers most apps.
 
 **Allow-list / deny-list:**
 
 ```tsx
-// cache only these 3 tabs; other pages are destroyed on exit
-<AnimatedOutlet keepAlive mode="switch" include={['/home', '/profile', '/settings']} />
+// Cache only the 3 main tabs; all other pages are destroyed on exit
+<KeepAlive mode="switch" include={['/tabs/home', '/tabs/discover', '/tabs/profile']}>
+  <AnimatedOutlet />
+</KeepAlive>
 
-// never cache form pages (destroyed on exit to avoid stale data)
-<AnimatedOutlet keepAlive mode="switch" exclude={['/checkout', '/payment']} />
+// Never cache payment or form pages (avoid stale data)
+<KeepAlive mode="switch" exclude={['/checkout', '/payment']}>
+  <AnimatedOutlet />
+</KeepAlive>
 
-// RegExp and predicate functions also work
-<AnimatedOutlet keepAlive mode="switch" exclude={(path) => path.startsWith('/form')} />
+// RegExp and predicate functions work too
+<KeepAlive mode="switch" exclude={(path) => path.startsWith('/form')}>
+  <AnimatedOutlet />
+</KeepAlive>
 ```
 
 `include` and `exclude` can be combined: a page is cached only if it passes `include` **and** does not match `exclude`.
 
 ### Imperative cache control (aliveRef)
 
-Use when you need to clear caches programmatically (e.g. logout):
+Clear caches programmatically, for example on logout:
 
 ```tsx
 import { useRef } from 'react'
-import { AnimatedOutlet } from 'react-router-dom-animate'
+import { useNavigate } from 'react-router-dom'
+import { AnimatedOutlet, KeepAlive } from 'react-router-dom-animate'
 import type { KeepAliveRef } from 'react-router-dom-animate'
 
 function TabsLayout() {
+  const navigate = useNavigate()
   const aliveRef = useRef<KeepAliveRef | undefined>(undefined)
 
   const handleLogout = () => {
-    aliveRef.current?.removeAll()  // clear all cached pages
+    aliveRef.current?.removeAll()  // evict all inactive cached pages
     navigate('/login')
   }
 
   return (
     <>
-      <AnimatedOutlet keepAlive mode="switch" aliveRef={aliveRef} />
+      <KeepAlive mode="switch" aliveRef={aliveRef}>
+        <AnimatedOutlet />
+      </KeepAlive>
       <button onClick={handleLogout}>Logout</button>
     </>
   )
@@ -238,36 +236,87 @@ function TabsLayout() {
 
 | Method | Description |
 |--------|-------------|
-| `remove(pathname)` | Remove the cache for a specific pathname; next visit remounts |
-| `removeAll()` | Remove all caches except the currently active page |
-| `getCached()` | Returns the list of cached pathnames (LRU order, tail = most recent) |
+| `remove(pathname)` | Evict one page by pathname; next visit remounts it |
+| `removeAll()` | Evict all pages except the currently active one |
+| `getCached()` | Returns all cached pathnames (LRU order, tail = most recent) |
+
+**Debug tip — display live cache state (refreshes on every navigation):**
+
+```tsx
+function CachedBadge({ aliveRef }: { aliveRef: React.RefObject<KeepAliveRef | undefined> }) {
+  useLocation() // re-render on every route change
+  const cached = aliveRef.current?.getCached() ?? []
+  return <div>Cached: {cached.join(', ') || '(empty)'}</div>
+}
+```
+
+> **Performance tip**: If you pass an inline function to `include` or `exclude`
+> (e.g. `exclude={(p) => p.includes('...')}`), a new function reference is created
+> on every parent render. The library stores these in refs internally so the
+> `<KeepAlive>` context stays stable, but it is still good practice to wrap
+> long-lived filters with `useCallback` or extract them to module-level constants:
+>
+> ```tsx
+> // ✅ Stable reference — recommended
+> const isPaymentPage = useCallback((p: string) => p.startsWith('/payment'), [])
+> <KeepAlive mode="switch" exclude={isPaymentPage}>
+>
+> // Also fine — internally wrapped in a ref, no context churn
+> <KeepAlive mode="switch" exclude={(p) => p.startsWith('/payment')}>
+> ```
 
 ### Lifecycle hooks
 
-Components don't remount in `keepAlive` mode — use these hooks to react to page enter/exit:
+Components don't remount in keep-alive mode — use these hooks to react to page activation:
 
 ```tsx
 import { useActivated, useDeactivated } from 'react-router-dom-animate'
 
 function ProfilePage() {
   useActivated(() => {
-    // runs each time the page becomes active, including initial mount
+    // runs every time the page becomes visible, including initial mount
     fetchLatestData()
   })
 
   useDeactivated(() => {
-    // runs when the page is hidden or the keepAlive group unmounts
+    // runs when the page is hidden or the keep-alive group unmounts
     cancelPendingRequests()
   })
 }
 ```
 
-| | `keepAlive` mode | Without `keepAlive` |
-|--|-----------------|---------------------|
+| Hook | In keep-alive mode | Without keep-alive |
+|------|--------------------|--------------------|
 | `useActivated` | Fires each time the page becomes active (including initial mount) | Equivalent to `useEffect(() => cb(), [])` |
 | `useDeactivated` | Fires when page is hidden or the group unmounts | Equivalent to `useEffect(() => () => cb(), [])` |
 
-> **Note**: `<Activity>` hides pages via `display:none`. Browsers will pause `<video>`/`<audio>` and may reload `<iframe>`. Use `useDeactivated` to save progress and `useActivated` to restore it.
+> **Note**: `<Activity>` hides pages via `display:none`. Browsers pause `<video>`/`<audio>` and may reload `<iframe>`. Use `useDeactivated` to save progress and `useActivated` to restore it.
+
+---
+
+## Props Reference
+
+### `<AnimatedOutlet>`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `transition` | `string` | `'cover'` | Built-in: `cover` `slide` `fade` `scale` `modal` `none`; or a custom preset name |
+| `mode` | `'stack' \| 'switch'` | `'stack'` | Without keep-alive: `stack` (directional) or `switch` (flat). Ignored inside `<KeepAlive>` |
+| `className` | `string` | — | Added to the `.animated-outlet-group` wrapper |
+
+### `<KeepAlive>`
+
+Wraps `<AnimatedOutlet>` to enable page caching.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `mode` | `'stack' \| 'switch'` | `'stack'` | `stack`: background preservation for drill-down; `switch`: LRU cache for tabs |
+| `max` | `number` | `30` | Max cached pages (LRU eviction). Switch mode only |
+| `include` | `string[] \| RegExp \| (path) => boolean` | — | Allow-list: only matching pages are cached. Switch mode only |
+| `exclude` | `string[] \| RegExp \| (path) => boolean` | — | Deny-list: matching pages are destroyed on exit. Switch mode only |
+| `aliveRef` | `RefObject<KeepAliveRef>` | — | Imperative cache control handle. Switch mode only |
+
+> **Alternative (stack mode only)**: Set `handle: { keepAlive: true }` on a route to enable stack keep-alive without wrapping with `<KeepAlive>`.
 
 ---
 
@@ -277,23 +326,23 @@ function ProfilePage() {
 
 ```css
 :root {
-  --fr-duration: 300ms;        /* global duration (default 300ms) */
+  --fr-duration: 300ms;        /* global duration (default: 300ms) */
   --fr-duration-modal: 450ms;  /* per-type override */
   --fr-duration-slide: 280ms;
 }
 ```
 
-Supported variable names: `--fr-duration-cover` `--fr-duration-slide` `--fr-duration-fade` `--fr-duration-scale` `--fr-duration-modal`
+Supported names: `--fr-duration-cover` `--fr-duration-slide` `--fr-duration-fade` `--fr-duration-scale` `--fr-duration-modal`
 
-### JS
+### JavaScript
 
 ```ts
 import { setAnimDuration } from 'react-router-dom-animate'
 
-setAnimDuration('modal', 450)  // takes priority over CSS variables
+setAnimDuration('modal', 450)  // overrides CSS variables
 ```
 
-### Register a custom animation preset
+### Custom animation presets
 
 ```ts
 import { registerAnimPreset } from 'react-router-dom-animate'
@@ -315,7 +364,7 @@ registerAnimPreset({
   durationMs: 600,
 })
 
-// use it just like a built-in animation
+// use it exactly like a built-in animation
 <AnimatedOutlet transition="my-flip" />
 navigate('/page', { state: { transition: 'my-flip' } })
 ```

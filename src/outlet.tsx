@@ -40,66 +40,19 @@ import {
 import type { ClassNames, KeepAliveFilter, KeepAliveRef, OutletMode, RouteAnimType, RouteSnapshot, TransitionPlan } from './types'
 
 export interface AnimatedOutletProps {
+  /**
+   * Animation type for route transitions. Falls back to the nearest layout scope
+   * or `'cover'` for stack mode, `'none'` for switch mode.
+   */
   transition?: RouteAnimType
+  /**
+   * Navigation mode for non-keepAlive outlets:
+   * - `'stack'` (default): uses PUSH/POP direction for slide animations.
+   * - `'switch'`: treats all navigations as REPLACE (tab-like, no directional animation).
+   *
+   * When inside `<KeepAlive>`, this prop is ignored — use `mode` on `<KeepAlive>` instead.
+   */
   mode?: OutletMode
-  /**
-   * Keep pages alive in the DOM using React's `<Activity>` component.
-   *
-   * **Stack mode** (`keepAlive` without `mode="switch"`): pages pushed forward
-   * are preserved in the background. Returning via POP restores the exact DOM
-   * state — including scroll positions — with the exit animation playing over
-   * the background page. Use this for list → detail → back navigation.
-   *
-   * **Switch mode** (`keepAlive mode="switch"`): all visited pages are cached
-   * by pathname and instantly shown/hidden when switching. Use `max` to limit
-   * the cache size (LRU eviction). Use this for bottom-tab navigation.
-   *
-   * Can also be set via route `handle`: `handle: { keepAlive: true }`.
-   */
-  keepAlive?: boolean
-  /**
-   * Maximum number of pages to keep in cache simultaneously (LRU eviction).
-   * Only applies when `keepAlive={true}` and `mode="switch"`. Defaults to 30.
-   * When the limit is exceeded, the least-recently-used page is evicted (DOM and
-   * scroll state released). Set higher for apps with many distinct tab destinations.
-   */
-  max?: number
-  /**
-   * Allow-list: only pathnames matching this filter are cached.
-   * Pages not matched will still render while active, but are discarded when
-   * navigating away (not preserved in Activity).
-   *
-   * Only applies when `keepAlive={true}` and `mode="switch"`.
-   *
-   * @example
-   * // cache only the three tab roots
-   * <AnimatedOutlet keepAlive mode="switch" include={['/home', '/profile', '/settings']} />
-   * // cache all pages under /tabs/
-   * <AnimatedOutlet keepAlive mode="switch" include={/^\/tabs\//} />
-   */
-  include?: KeepAliveFilter
-  /**
-   * Deny-list: pathnames matching this filter are NOT cached (evicted on exit).
-   * All other pages are cached as normal.
-   *
-   * Only applies when `keepAlive={true}` and `mode="switch"`.
-   *
-   * @example
-   * // never cache one-time pages like forms or confirmation screens
-   * <AnimatedOutlet keepAlive mode="switch" exclude={['/checkout', '/payment']} />
-   * <AnimatedOutlet keepAlive mode="switch" exclude={(path) => path.startsWith('/form')} />
-   */
-  exclude?: KeepAliveFilter
-  /**
-   * Imperative handle for cache control. Only applies when `keepAlive` and `mode="switch"`.
-   * After mount, `aliveRef.current` exposes `remove`, `removeAll`, and `getCached`.
-   *
-   * @example
-   * const aliveRef = useRef<KeepAliveRef>()
-   * <AnimatedOutlet keepAlive mode="switch" aliveRef={aliveRef} />
-   * aliveRef.current?.remove('/home')
-   */
-  aliveRef?: RefObject<KeepAliveRef | undefined>
   className?: string
   children?: ReactNode
 }
@@ -108,6 +61,96 @@ const DepthContext = createContext(0)
 // Signals that this subtree is inside an alive=false (exiting) BackgroundPreserveRoot entry.
 // Nested BackgroundPreserveRoots must not update their outlet/locCtx while frozen.
 const FrozenContext = createContext(false)
+
+interface KeepAliveContextValue {
+  mode: OutletMode
+  max?: number
+  // include/exclude are stored as refs so the context value stays stable
+  // even when the user passes inline functions that change on every render.
+  includeRef: RefObject<KeepAliveFilter | undefined>
+  excludeRef: RefObject<KeepAliveFilter | undefined>
+  aliveRef?: RefObject<KeepAliveRef | null | undefined>
+}
+
+const KeepAliveContext = createContext<KeepAliveContextValue | null>(null)
+
+export interface KeepAliveProps {
+  /**
+   * Caching strategy for child routes rendered by `<AnimatedOutlet>`.
+   *
+   * - **`'stack'`** (default): list → detail → back navigation. The background page
+   *   is preserved in the DOM and scroll position is restored when the user pops back.
+   * - **`'switch'`**: tab / bottom-nav navigation. All visited pages are kept in an
+   *   LRU cache and shown / hidden instantly when switching tabs.
+   */
+  mode?: OutletMode
+  /**
+   * Maximum number of pages to keep in cache simultaneously (LRU eviction).
+   * Only applies when `mode="switch"`. Defaults to 30.
+   */
+  max?: number
+  /**
+   * Allow-list: only pathnames matching this filter are cached.
+   * Pages not matched are still rendered while active but discarded on exit.
+   * Only applies when `mode="switch"`.
+   */
+  include?: KeepAliveFilter
+  /**
+   * Deny-list: pathnames matching this filter are NOT cached (evicted on exit).
+   * Only applies when `mode="switch"`.
+   */
+  exclude?: KeepAliveFilter
+  /**
+   * Imperative handle for cache control. Only applies when `mode="switch"`.
+   * After mount, `aliveRef.current` exposes `remove`, `removeAll`, and `getCached`.
+   *
+   * @example
+   * const aliveRef = useRef<KeepAliveRef>()
+   * <KeepAlive mode="switch" aliveRef={aliveRef}>
+   *   <AnimatedOutlet />
+   * </KeepAlive>
+   * aliveRef.current?.remove('/home')
+   */
+  aliveRef?: RefObject<KeepAliveRef | null | undefined>
+  children: ReactNode
+}
+
+/**
+ * Enables page caching for the `<AnimatedOutlet>` nested inside.
+ *
+ * Wrap the outlet that needs caching — the page that should be preserved will
+ * stay mounted in the DOM using React's `<Activity>` component.
+ *
+ * @example
+ * // Tab / bottom-nav: cache all visited tabs (switch mode)
+ * <KeepAlive mode="switch">
+ *   <AnimatedOutlet transition="cover" />
+ * </KeepAlive>
+ *
+ * @example
+ * // List → detail → back: preserve background page (stack mode, default)
+ * <KeepAlive>
+ *   <AnimatedOutlet transition="cover" />
+ * </KeepAlive>
+ */
+export function KeepAlive({ children, mode = 'stack', max, include, exclude, aliveRef }: KeepAliveProps) {
+  // Stable refs for include/exclude so the context value is not recreated when
+  // the user passes inline functions (which would otherwise change reference on
+  // every parent render and cause all AnimatedOutlet consumers to re-render).
+  const includeRef = useRef<KeepAliveFilter | undefined>(include)
+  const excludeRef = useRef<KeepAliveFilter | undefined>(exclude)
+  includeRef.current = include
+  excludeRef.current = exclude
+
+  const ctxValue = useMemo<KeepAliveContextValue>(
+    // includeRef / excludeRef are stable (same object every render), so they
+    // do not need to be in the dep array — only primitive/stable values do.
+    () => ({ mode, max, includeRef, excludeRef, aliveRef }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mode, max, aliveRef],
+  )
+  return <KeepAliveContext.Provider value={ctxValue}>{children}</KeepAliveContext.Provider>
+}
 
 function pageTransitionKey(
   mode: OutletMode,
@@ -660,7 +703,7 @@ function KeepAliveRoot({
   max?: number
   include?: KeepAliveFilter
   exclude?: KeepAliveFilter
-  aliveRef?: RefObject<KeepAliveRef | undefined>
+  aliveRef?: RefObject<KeepAliveRef | null | undefined>
   layoutTransition?: RouteAnimType
   className?: string
 }) {
@@ -1167,11 +1210,6 @@ function AnimatedRoot({
 
 export default function AnimatedOutlet({
   transition,
-  keepAlive: keepAliveProp,
-  max,
-  include,
-  exclude,
-  aliveRef,
   mode,
   className,
   children,
@@ -1179,11 +1217,11 @@ export default function AnimatedOutlet({
   const depth = useContext(DepthContext)
   const matches = useMatches()
   const location = useLocation()
+  const keepAliveCtx = useContext(KeepAliveContext)
 
-  // Props take precedence over route handle flags.
-  const keepAlive = keepAliveProp ?? matches.some((m) => {
+  // <KeepAlive> wrapper takes precedence over route handle flags.
+  const keepAlive = keepAliveCtx !== null || matches.some((m) => {
     const h = m.handle as Record<string, unknown> | null | undefined
-    // keepBackground is an alias for keepAlive (backward compat for handle-based config).
     return h?.keepAlive === true || h?.keepBackground === true
   })
 
@@ -1192,13 +1230,25 @@ export default function AnimatedOutlet({
   }
 
   if (keepAlive) {
-    const effectiveMode = resolveOutletMode(mode, matches, location.state)
+    // When wrapped in <KeepAlive>, use context mode directly.
+    // When triggered by route handle, fall back to resolveOutletMode.
+    const effectiveMode = keepAliveCtx !== null
+      ? keepAliveCtx.mode
+      : resolveOutletMode(mode, matches, location.state)
+
     if (effectiveMode === 'switch') {
       // Switch mode: all pages cached by pathname, instant Activity show/hide.
       return (
         <DepthContext.Provider value={depth + 1}>
           {transition ? <LayoutScopeRegistrar transition={transition} /> : null}
-          <KeepAliveRoot max={max} include={include} exclude={exclude} aliveRef={aliveRef} layoutTransition={transition} className={className} />
+          <KeepAliveRoot
+            max={keepAliveCtx?.max}
+            include={keepAliveCtx?.includeRef.current}
+            exclude={keepAliveCtx?.excludeRef.current}
+            aliveRef={keepAliveCtx?.aliveRef}
+            layoutTransition={transition}
+            className={className}
+          />
         </DepthContext.Provider>
       )
     }

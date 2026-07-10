@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
-import { Navigate, NavLink, useNavigate } from 'react-router-dom'
+import { Navigate, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import type { KeepAliveRef, RouteAnimType } from 'react-router-dom-animate'
-import { AnimatedOutlet, useActivated, useDeactivated } from 'react-router-dom-animate'
+import { AnimatedOutlet, KeepAlive, useActivated, useDeactivated } from 'react-router-dom-animate'
 
 // ─── Filter demo (include / exclude) ────────────────────────────────────────
 
@@ -95,6 +95,33 @@ const ANIM_OPTIONS: { label: string; value: RouteAnimType | undefined }[] = [
   { label: 'scale', value: 'scale' },
 ]
 
+const MAX_CACHE = 5
+
+/** 读取当前缓存列表并格式化显示 — 每次 location 变化时重新读取 */
+function CachedBadge({ aliveRef }: { aliveRef: React.RefObject<KeepAliveRef | undefined> }) {
+  useLocation() // 订阅 location 变化，路由切换后自动重渲染
+  const cached = aliveRef.current?.getCached() ?? []
+  return (
+    <div style={{ fontSize: 11, opacity: 0.7, padding: '2px 12px', background: 'rgba(0,0,0,0.04)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span style={{ opacity: 0.6, whiteSpace: 'nowrap' }}>缓存 ({cached.length}/{MAX_CACHE}):</span>
+      {cached.length === 0
+        ? <span style={{ opacity: 0.4 }}>（空）</span>
+        : cached.map((p) => (
+          <code
+            key={p}
+            style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6', borderRadius: 3, padding: '0 4px' }}
+          >
+            {p.replace('/keep-alive/', '')}
+          </code>
+        ))
+      }
+      <span style={{ opacity: 0.4, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+        超出 max 后 LRU 最旧的 Tab 状态被重置
+      </span>
+    </div>
+  )
+}
+
 export function KeepAliveLayout() {
   const navigate = useNavigate()
   const aliveRef = useRef<KeepAliveRef | undefined>(undefined)
@@ -134,6 +161,9 @@ export function KeepAliveLayout() {
         </div>
       </header>
 
+      {/* 实时显示 LRU 缓存状态 — max=2 时 3 个 Tab 可演示驱逐效果 */}
+      <CachedBadge aliveRef={aliveRef} />
+
       <div style={{ display: 'flex', gap: 6, padding: '6px 12px', background: 'rgba(0,0,0,0.04)', fontSize: 12 }}>
         <span style={{ opacity: 0.5, alignSelf: 'center' }}>transition:</span>
         {ANIM_OPTIONS.map((opt) => (
@@ -158,7 +188,10 @@ export function KeepAliveLayout() {
       </div>
 
       <main className="app-main">
-        <AnimatedOutlet keepAlive mode="switch" max={5} aliveRef={aliveRef} transition={anim} />
+        {/* max=5：正常使用不触发驱逐；getCached() 实时反映缓存状态 */}
+        <KeepAlive mode="switch" max={MAX_CACHE} aliveRef={aliveRef}>
+          <AnimatedOutlet transition={anim} />
+        </KeepAlive>
       </main>
 
       <nav className="tabs">
@@ -225,11 +258,9 @@ export function FilterLayout() {
 
       <main className="app-main">
         {/* 只缓存 A、C；B 每次进入都重新 mount */}
-        <AnimatedOutlet
-          keepAlive
-          mode="switch"
-          exclude={[`${BASE}/b`]}
-        />
+        <KeepAlive mode="switch" exclude={[`${BASE}/b`]}>
+          <AnimatedOutlet />
+        </KeepAlive>
       </main>
 
       <nav className="tabs">

@@ -19,7 +19,7 @@ import {
   type RouteObject,
 } from 'react-router-dom'
 
-import { AnimatedOutlet, setAnimDuration } from '../index'
+import { AnimatedOutlet, KeepAlive, setAnimDuration } from '../index'
 import { registerAnimPreset, planTransition } from '../transition'
 import type { KeepAliveRef } from '../types'
 import type { RouteSnapshot } from '../types'
@@ -31,7 +31,7 @@ afterEach(() => cleanup())
 // ---------------------------------------------------------------------------
 
 function makeSwitch(opts: {
-  aliveRef?: React.RefObject<KeepAliveRef | undefined>
+  aliveRef?: React.RefObject<KeepAliveRef | null | undefined>
   max?: number
   include?: string[]
   exclude?: string[]
@@ -48,14 +48,15 @@ function makeSwitch(opts: {
         <button type="button" data-testid="go-b" onClick={() => navigate('/sw/b', { replace: true })}>B</button>
         <button type="button" data-testid="go-c" onClick={() => navigate('/sw/c', { replace: true })}>C</button>
         <button type="button" data-testid="go-d" onClick={() => navigate('/sw/d', { replace: true })}>D</button>
-        <AnimatedOutlet
-          keepAlive
+        <KeepAlive
           mode="switch"
           aliveRef={opts.aliveRef}
           max={opts.max}
           include={opts.include}
           exclude={opts.exclude}
-        />
+        >
+          <AnimatedOutlet />
+        </KeepAlive>
       </>
     )
   }
@@ -141,7 +142,7 @@ describe('aliveRef.remove(pathname)', () => {
           <button type="button" data-testid="clear-a" onClick={() => ref.current?.remove('/rm/a')}>
             clear A
           </button>
-          <AnimatedOutlet keepAlive mode="switch" aliveRef={ref} />
+          <KeepAlive mode="switch" aliveRef={ref}><AnimatedOutlet /></KeepAlive>
         </>
       )
     }
@@ -192,7 +193,7 @@ describe('aliveRef.remove(pathname)', () => {
           <button type="button" data-testid="remove-a" onClick={() => ref.current?.remove('/rm2/a')}>
             remove A
           </button>
-          <AnimatedOutlet keepAlive mode="switch" aliveRef={ref} />
+          <KeepAlive mode="switch" aliveRef={ref}><AnimatedOutlet /></KeepAlive>
         </>
       )
     }
@@ -291,7 +292,7 @@ describe('aliveRef.removeAll()', () => {
           <button type="button" data-testid="go-a" onClick={() => navigate('/rma/a', { replace: true })}>A</button>
           <button type="button" data-testid="go-b" onClick={() => navigate('/rma/b', { replace: true })}>B</button>
           <button type="button" data-testid="removeAll" onClick={() => ref.current?.removeAll()}>clear</button>
-          <AnimatedOutlet keepAlive mode="switch" aliveRef={ref} />
+          <KeepAlive mode="switch" aliveRef={ref}><AnimatedOutlet /></KeepAlive>
         </>
       )
     }
@@ -406,7 +407,7 @@ describe('max LRU 淘汰', () => {
           <button type="button" data-testid="go-a" onClick={() => navigate('/lru/a', { replace: true })}>A</button>
           <button type="button" data-testid="go-b" onClick={() => navigate('/lru/b', { replace: true })}>B</button>
           <button type="button" data-testid="go-c" onClick={() => navigate('/lru/c', { replace: true })}>C</button>
-          <AnimatedOutlet keepAlive mode="switch" max={2} />
+          <KeepAlive mode="switch" max={2}><AnimatedOutlet /></KeepAlive>
         </>
       )
     }
@@ -532,7 +533,7 @@ describe('Bug 回归：aliveRef.remove() 在退出动画期间调用不留孤立
           >
             go-b-remove-a
           </button>
-          <AnimatedOutlet keepAlive mode="switch" aliveRef={ref} />
+          <KeepAlive mode="switch" aliveRef={ref}><AnimatedOutlet /></KeepAlive>
         </>
       )
     }

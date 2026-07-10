@@ -15,7 +15,7 @@ import {
   type RouteObject,
 } from 'react-router-dom'
 
-import { AnimatedOutlet } from '../index'
+import { AnimatedOutlet, KeepAlive } from '../index'
 
 afterEach(() => cleanup())
 
@@ -49,7 +49,7 @@ function makeStackApp() {
   }
 
   function Layout() {
-    return <AnimatedOutlet keepAlive transition="cover" />
+    return <KeepAlive><AnimatedOutlet transition="cover" /></KeepAlive>
   }
 
   const routes: RouteObject[] = [
@@ -217,7 +217,7 @@ describe('keepAlive stack：REPLACE 到不同页面（Bug #4 回归）', () => {
         <>
           <NavLink data-testid="go-detail" to="/detail" replace>detail</NavLink>
           <NavLink data-testid="go-other" to="/other" replace>other</NavLink>
-          <AnimatedOutlet keepAlive transition="cover" />
+          <KeepAlive><AnimatedOutlet transition="cover" /></KeepAlive>
         </>
       )
     }

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { NavLink, useNavigate, useParams } from 'react-router-dom'
-import { AnimatedOutlet } from 'react-router-dom-animate'
+import { AnimatedOutlet, KeepAlive } from 'react-router-dom-animate'
 
 // Layout: keepAlive stack mode — list → detail → back
 export function KeepAliveStackLayout() {
@@ -14,8 +14,9 @@ export function KeepAliveStackLayout() {
         <span>keepAlive 栈模式 — 列表保活</span>
       </header>
       <main className="app-main">
-        {/* keepAlive without mode="switch" = stack mode */}
-        <AnimatedOutlet keepAlive transition="cover" />
+        <KeepAlive>
+          <AnimatedOutlet transition="cover" />
+        </KeepAlive>
       </main>
     </div>
   )
