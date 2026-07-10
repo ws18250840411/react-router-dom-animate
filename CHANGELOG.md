@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.1.1] — 2026-07-10
+
+### Documentation
+
+- **Browser-only 声明**：README（中/英）新增 browser-only 警告，说明本库不支持 SSR / Server Components，并提供 Next.js / Remix 下的 `'use client'` 指引。
+- **mode 动态切换说明**：`<KeepAlive>` props 表格后增加注意事项，提示运行时切换 `mode` 会清空所有缓存状态。
+- **transition.ts 注释增强**：模块级单例增加 SSR 隔离行为说明，澄清跨请求污染的实际风险与适用场景。
+
+### Fixed
+
+- `src/types.ts`：`KeepAliveRef` JSDoc 由旧 API `<AnimatedOutlet keepAlive>` 更正为 `<KeepAlive mode="switch">`。
+- `src/outlet.tsx`：`KeepAliveRoot` 内部注释由 `keepAlive={true} for <AnimatedOutlet>` 更正为 `switch-mode cache for <KeepAlive mode="switch">`。
+
+### Demo
+
+- Home 页新增 `include / exclude 过滤` 入口链接，避免该 demo 无法从主页进入。
+- Tab A 新增可视化生命周期日志（`useActivated`/`useDeactivated` 事件 + 时间戳）。
+- Tab B 新增激活状态指示器（绿色 `● 当前激活` / 灰色 `○ 已离开`）。
+- `CachedBadge` 彩色编码：绿色 = 当前页、红色 = LRU 最旧（待驱逐）、蓝色 = 正常缓存。
+
+---
+
 ## [1.1.0] — 2026-07-10
 
 ### Added
