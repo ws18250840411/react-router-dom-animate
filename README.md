@@ -10,6 +10,8 @@ npm install react-router-dom-animate
 
 > Peer deps：`react` ≥19、`react-dom` ≥19、`react-router-dom` ≥7
 
+> **仅支持浏览器环境**：本库基于 React 19 `<Activity>` 及 DOM API，**不支持 SSR / Server Components**。如果项目使用 Remix 或 Next.js 的 SSR 功能，请将使用了 `AnimatedOutlet` / `KeepAlive` 的组件标记为 `'use client'`，并确保它们在浏览器端渲染。
+
 ---
 
 ## 入门教程
@@ -112,6 +114,8 @@ navigate('/detail/1', { state: { transition: 'cover' } })
 | `include` | `string[] \| RegExp \| (path) => boolean` | — | 缓存白名单，只有匹配的页面才缓存（仅 switch 模式）|
 | `exclude` | `string[] \| RegExp \| (path) => boolean` | — | 缓存黑名单，匹配的页面离开时立即销毁（仅 switch 模式）|
 | `aliveRef` | `RefObject<KeepAliveRef>` | — | 命令式缓存控制句柄（仅 switch 模式）|
+
+> **注意**：`mode` 建议固定不变。若运行时将 `mode` 从 `'switch'` 切换到 `'stack'`（或反向），会触发 `<KeepAlive>` Context 重建，所有已缓存的页面状态将全部清除。
 
 > **也可通过路由 `handle` 自动触发**（不使用 `<KeepAlive>` 时的备用方式，仅支持栈模式）：
 >

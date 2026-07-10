@@ -125,6 +125,9 @@ export function Home() {
           <Link to="/keep-alive-stack" className="tab" data-testid="link-keep-alive-stack">
             栈模式（列表→详情保活）→
           </Link>
+          <Link to="/keep-alive-filter" className="tab" data-testid="link-keep-alive-filter">
+            include / exclude 过滤 →
+          </Link>
         </div>
       </section>
     </div>

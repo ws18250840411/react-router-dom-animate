@@ -360,8 +360,16 @@ function isAnimated(classNames: ClassNames): boolean {
 
 /**
  * Module-level singletons for page/layout animation overrides.
- * SSR: these maps are emptied after each render (mount registers, unmount cleans up),
- * so a full SSR pass leaves them empty — safe for most setups.
+ *
+ * **Browser only**: this library targets browser environments. Do not use in
+ * SSR (Node.js / Deno) without a module-per-request isolation strategy.
+ *
+ * In typical bundler SSR setups (Vite, webpack) each server worker gets its
+ * own module instance, so these singletons are implicitly request-scoped.
+ * In shared-module setups (e.g. module federation without SSR isolation)
+ * these maps persist across requests — register/unregister still happens
+ * symmetrically (mount → register, unmount → unregister) so contamination
+ * is limited to the window between mount and unmount.
  */
 const pageAnims = new Map<string, RouteAnimType>()
 const layoutScopes = new Map<string, RouteAnimType>()

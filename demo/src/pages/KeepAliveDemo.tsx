@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useCallback } from 'react'
 import { Navigate, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import type { KeepAliveRef, RouteAnimType } from 'react-router-dom-animate'
 import { AnimatedOutlet, KeepAlive, useActivated, useDeactivated } from 'react-router-dom-animate'
@@ -11,23 +11,42 @@ export function KeepAliveTabA() {
   const [count, setCount] = useState(0)
   const renders = useRef(0)
   renders.current += 1
+  const [lifecycle, setLifecycle] = useState<{ event: string; time: string }[]>([])
 
-  useActivated(() => console.log('[TabA] activated'))
-  useDeactivated(() => console.log('[TabA] deactivated'))
+  const pushEvent = useCallback((event: string) => {
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    setLifecycle((prev) => [...prev.slice(-4), { event, time }])
+  }, [])
+
+  useActivated(() => pushEvent('activated'))
+  useDeactivated(() => pushEvent('deactivated'))
 
   return (
     <div className="page" data-testid="ka-tab-a">
       <h2>Tab A — 计数器 + 滚动</h2>
-      <p className="hint">切换到 Tab B 再切回来，计数和滚动位置不丢失</p>
+      <p className="hint">切换到其他 Tab 再切回，计数和滚动位置不丢失</p>
 
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
         <button type="button" data-testid="ka-dec" onClick={() => setCount((c) => c - 1)}>−</button>
         <span data-testid="ka-counter" style={{ fontVariantNumeric: 'tabular-nums', minWidth: 40, textAlign: 'center', fontSize: 24 }}>{count}</span>
         <button type="button" data-testid="ka-inc" onClick={() => setCount((c) => c + 1)}>+</button>
         <span style={{ marginLeft: 8, opacity: 0.5, fontSize: 12 }}>renders: {renders.current}</span>
       </div>
 
-      <div style={{ height: 600, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16 }} data-testid="ka-scroll-area">
+      {/* Lifecycle event log */}
+      <div style={{ marginBottom: 12, padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0', minHeight: 36 }}>
+        <span style={{ fontSize: 11, opacity: 0.5 }}>useActivated / useDeactivated: </span>
+        {lifecycle.length === 0
+          ? <span style={{ fontSize: 12, opacity: 0.4 }}>（切换 tab 后触发）</span>
+          : lifecycle.map((e, i) => (
+            <span key={i} style={{ fontSize: 12, marginLeft: 6, color: e.event === 'activated' ? '#16a34a' : '#dc2626' }}>
+              {e.event} {e.time}
+            </span>
+          ))
+        }
+      </div>
+
+      <div style={{ height: 520, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16 }} data-testid="ka-scroll-area">
         {Array.from({ length: 30 }, (_, i) => (
           <p key={i} style={{ padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
             第 {i + 1} 行 — 向下滚动后切走再切回，位置保留 ✓
@@ -42,14 +61,23 @@ export function KeepAliveTabA() {
 
 export function KeepAliveTabB() {
   const [text, setText] = useState('')
+  const [active, setActive] = useState(false)
 
-  useActivated(() => console.log('[TabB] activated'))
-  useDeactivated(() => console.log('[TabB] deactivated'))
+  useActivated(() => setActive(true))
+  useDeactivated(() => setActive(false))
 
   return (
     <div className="page" data-testid="ka-tab-b">
       <h2>Tab B — 文本输入</h2>
       <p className="hint">输入文字后切走再切回，内容不丢失</p>
+
+      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: active ? '#16a34a' : '#64748b' }}>
+          {active ? '● 当前激活' : '○ 已离开'}
+        </span>
+        <span style={{ fontSize: 12, opacity: 0.5 }}>— useActivated / useDeactivated</span>
+      </div>
+
       <input
         type="text"
         data-testid="ka-input"
@@ -99,24 +127,36 @@ const MAX_CACHE = 5
 
 /** 读取当前缓存列表并格式化显示 — 每次 location 变化时重新读取 */
 function CachedBadge({ aliveRef }: { aliveRef: React.RefObject<KeepAliveRef | undefined> }) {
-  useLocation() // 订阅 location 变化，路由切换后自动重渲染
+  const { pathname } = useLocation() // 订阅 location 变化，路由切换后自动重渲染
   const cached = aliveRef.current?.getCached() ?? []
   return (
-    <div style={{ fontSize: 11, opacity: 0.7, padding: '2px 12px', background: 'rgba(0,0,0,0.04)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-      <span style={{ opacity: 0.6, whiteSpace: 'nowrap' }}>缓存 ({cached.length}/{MAX_CACHE}):</span>
+    <div style={{ fontSize: 11, padding: '4px 12px', background: 'rgba(0,0,0,0.04)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+      <span style={{ opacity: 0.5, whiteSpace: 'nowrap' }}>LRU 缓存 ({cached.length}/{MAX_CACHE}):</span>
       {cached.length === 0
-        ? <span style={{ opacity: 0.4 }}>（空）</span>
-        : cached.map((p) => (
-          <code
-            key={p}
-            style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6', borderRadius: 3, padding: '0 4px' }}
-          >
-            {p.replace('/keep-alive/', '')}
-          </code>
-        ))
+        ? <span style={{ opacity: 0.35 }}>（空）</span>
+        : cached.map((p, i) => {
+          const isActive = p === pathname
+          const isLRUOldest = i === 0 && cached.length >= MAX_CACHE
+          return (
+            <code
+              key={p}
+              title={isActive ? '当前页面' : isLRUOldest ? '下一个被驱逐（最旧）' : '已缓存'}
+              style={{
+                borderRadius: 3,
+                padding: '1px 5px',
+                background: isActive ? 'rgba(22,163,74,0.15)' : isLRUOldest ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.12)',
+                color: isActive ? '#16a34a' : isLRUOldest ? '#dc2626' : '#3b82f6',
+                border: `1px solid ${isActive ? 'rgba(22,163,74,0.3)' : isLRUOldest ? 'rgba(239,68,68,0.25)' : 'transparent'}`,
+              }}
+            >
+              {p.replace('/keep-alive/', '')}
+              {isActive ? ' ●' : isLRUOldest ? ' ⚠' : ''}
+            </code>
+          )
+        })
       }
-      <span style={{ opacity: 0.4, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
-        超出 max 后 LRU 最旧的 Tab 状态被重置
+      <span style={{ opacity: 0.35, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+        超出 {MAX_CACHE} 个后驱逐最旧（红色）
       </span>
     </div>
   )

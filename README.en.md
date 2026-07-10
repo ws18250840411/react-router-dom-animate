@@ -11,6 +11,8 @@ npm install react-router-dom-animate
 
 > Peer deps: `react` ≥19, `react-dom` ≥19, `react-router-dom` ≥7
 
+> **Browser-only**: This library depends on React 19 `<Activity>` and DOM APIs and **does not support SSR or Server Components**. When using Remix or Next.js SSR, mark components that use `AnimatedOutlet` / `KeepAlive` with `'use client'` and ensure they render on the client side.
+
 ---
 
 ## Quick Start (30 seconds)
@@ -315,6 +317,8 @@ Wraps `<AnimatedOutlet>` to enable page caching.
 | `include` | `string[] \| RegExp \| (path) => boolean` | — | Allow-list: only matching pages are cached. Switch mode only |
 | `exclude` | `string[] \| RegExp \| (path) => boolean` | — | Deny-list: matching pages are destroyed on exit. Switch mode only |
 | `aliveRef` | `RefObject<KeepAliveRef>` | — | Imperative cache control handle. Switch mode only |
+
+> **Note**: It is recommended to keep `mode` fixed. Switching `mode` at runtime (e.g. from `'switch'` to `'stack'`) triggers a Context rebuild and **clears all cached page state**.
 
 > **Alternative (stack mode only)**: Set `handle: { keepAlive: true }` on a route to enable stack keep-alive without wrapping with `<KeepAlive>`.
 

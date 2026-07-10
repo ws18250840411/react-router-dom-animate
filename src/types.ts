@@ -95,7 +95,7 @@ export interface AnimPresetRegistry {
 export type KeepAliveFilter = string[] | RegExp | ((pathname: string) => boolean)
 
 /**
- * Imperative handle returned by `aliveRef` on `<AnimatedOutlet keepAlive>`.
+ * Imperative handle exposed via `aliveRef` on `<KeepAlive mode="switch">`.
  * Allows programmatic control over the keepAlive page cache.
  */
 export interface KeepAliveRef {

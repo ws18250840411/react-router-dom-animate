@@ -676,7 +676,7 @@ function detachBgScrollHandler(
 }
 
 /**
- * Implements `keepAlive={true}` for `<AnimatedOutlet>`.
+ * Implements the switch-mode cache for `<KeepAlive mode="switch">`.
  *
  * Each unique pathname is cached via `<Activity>`. The active page is
  * `mode="visible"`; all others are `mode="hidden"` (display:none). React state
