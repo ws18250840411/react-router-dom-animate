@@ -105,7 +105,7 @@ export interface KeepAliveProps {
    * After mount, `aliveRef.current` exposes `remove`, `removeAll`, and `getCached`.
    *
    * @example
-   * const aliveRef = useRef<KeepAliveRef>()
+   * const aliveRef = useRef<KeepAliveRef | undefined>(undefined)
    * <KeepAlive mode="switch" aliveRef={aliveRef}>
    *   <AnimatedOutlet />
    * </KeepAlive>

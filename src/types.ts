@@ -90,7 +90,7 @@ export interface AnimPresetRegistry {
  * - `(pathname: string) => boolean`: custom predicate function
  *
  * Used by `include` (allow-list) and `exclude` (deny-list) props on
- * `<AnimatedOutlet keepAlive mode="switch">`.
+ * `<KeepAlive mode="switch">`.
  */
 export type KeepAliveFilter = string[] | RegExp | ((pathname: string) => boolean)
 
