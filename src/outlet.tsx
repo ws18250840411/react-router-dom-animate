@@ -50,7 +50,9 @@ export interface AnimatedOutletProps {
    * - `'stack'` (default): uses PUSH/POP direction for slide animations.
    * - `'switch'`: treats all navigations as REPLACE (tab-like, no directional animation).
    *
-   * When inside `<KeepAlive>`, this prop is ignored — use `mode` on `<KeepAlive>` instead.
+   * When inside `<KeepAlive>`, an explicitly supplied value overrides the inherited
+   * mode for this outlet. This is useful for a root stack cache with an instant
+   * nested tab outlet.
    */
   mode?: OutletMode
   className?: string
@@ -364,7 +366,18 @@ function BackgroundPreserveRoot({
     container: HTMLElement
   }>())
   const bgFrozenRef = useRef(new Map<string, boolean>())
+  // Once a page starts leaving, ignore browser-generated scroll events until it
+  // is restored. Some engines reset descendant scrollTop when Activity applies
+  // display:none; that reset must never overwrite the pre-navigation snapshot.
+  const bgNavigationFrozenRef = useRef(new Set<string>())
   const pendingScrollRestoreRef = useRef(new Set<string>())
+  const scrollRestoreFrameRef = useRef<number | null>(null)
+
+  useEffect(() => () => {
+    if (scrollRestoreFrameRef.current !== null) {
+      window.cancelAnimationFrame(scrollRestoreFrameRef.current)
+    }
+  }, [])
 
   const locKey = location.key
   // stableKey groups same-level pages: combines layout route ID with path depth so that
@@ -393,13 +406,15 @@ function BackgroundPreserveRoot({
         stackRef.current = [...below, ...poppedOff, restored]
         if (bgScrollsRef.current.has(restored.stableKey)) {
           pendingScrollRestoreRef.current.add(restored.stableKey)
+        } else {
+          bgNavigationFrozenRef.current.delete(restored.stableKey)
         }
       } else {
         // Target not found in back-stack (jumped back multiple levels or same-level nav after
         // stableKey update). Reset — the Activity key (stableKey) may be the same, so React
         // will reconcile without unmounting if it matches.
         for (const e of stackRef.current) {
-          detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, e.stableKey)
+          detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgNavigationFrozenRef.current, e.stableKey)
           nodeRefsCache.current.delete(e.stableKey)
           bgScrollsRef.current.delete(e.stableKey)
         }
@@ -414,6 +429,18 @@ function BackgroundPreserveRoot({
         i === arr.length - 1 ? { ...e, locKey, outlet, locCtx } : e,
       )
     } else if (navType === 'PUSH') {
+      const scrolls = bgScrollsRef.current.get(topEntry.stableKey)
+      if (scrolls?.length) {
+        for (let index = scrolls.length - 1; index >= 0; index--) {
+          const element = scrolls[index][0]
+          if (!element.isConnected) {
+            scrolls.splice(index, 1)
+          } else {
+            scrolls[index] = [element, element.scrollTop, element.scrollLeft]
+          }
+        }
+      }
+      bgNavigationFrozenRef.current.add(topEntry.stableKey)
       // True stack push: navigating to a different depth/layout page (different stableKey).
       // Hide all entries below the current top (which becomes second after PUSH) so they
       // don't show through during the animation and don't waste render budget.
@@ -434,7 +461,7 @@ function BackgroundPreserveRoot({
       // REPLACE with a different stableKey: swap top entry.
       const replaced = stackRef.current[stackRef.current.length - 1]
       if (replaced) {
-        detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, replaced.stableKey)
+        detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgNavigationFrozenRef.current, replaced.stableKey)
         nodeRefsCache.current.delete(replaced.stableKey)
         bgScrollsRef.current.delete(replaced.stableKey)
       }
@@ -468,7 +495,7 @@ function BackgroundPreserveRoot({
       // The scroll event's target is exactly the element that scrolled, so we only
       // read/update that one element rather than scanning the whole subtree on every frame.
       const handler = (event: Event) => {
-        if (bgFrozenRef.current.get(key)) return
+        if (bgFrozenRef.current.get(key) || bgNavigationFrozenRef.current.has(key)) return
         const el = event.target as HTMLElement | null
         if (!el) return
         let cache = bgScrollsRef.current.get(key)
@@ -517,7 +544,7 @@ function BackgroundPreserveRoot({
     // Detach listeners for entries that are no longer in the cache.
     bgScrollHandlersRef.current.forEach((_, key) => {
       if (!nodeRefsCache.current.has(key)) {
-        detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, key)
+        detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgNavigationFrozenRef.current, key)
       }
     })
   })
@@ -532,18 +559,24 @@ function BackgroundPreserveRoot({
         const saved = bgScrollsRef.current.get(sk)
         const container = nodeRefsCache.current.get(sk)?.current
         if (saved && container) {
-          for (const [el, top, left] of saved) {
-            if (!el.isConnected) continue
-            // React Activity uses display:none (per React 19 docs). Most browsers preserve
-            // child scrollTop when only a *parent* gets display:none, so el.scrollTop may
-            // already equal the saved value on return. Only overwrite when the browser has
-            // actually reset the position to 0 — this avoids clobbering a correctly
-            // browser-preserved value with a stale bgScrollsRef in edge cases (e.g.
-            // programmatic navigation where no touchstart fired to update the snapshot).
-            if (el.scrollTop === 0 && top !== 0) el.scrollTop = top
-            if (el.scrollLeft === 0 && left !== 0) el.scrollLeft = left
+          const restore = () => {
+            for (const [el, top, left] of saved) {
+              if (!el.isConnected) continue
+              el.scrollTop = top
+              el.scrollLeft = left
+            }
           }
+          restore()
+          if (scrollRestoreFrameRef.current !== null) {
+            window.cancelAnimationFrame(scrollRestoreFrameRef.current)
+          }
+          scrollRestoreFrameRef.current = window.requestAnimationFrame(() => {
+            scrollRestoreFrameRef.current = null
+            const current = stackRef.current[stackRef.current.length - 1]
+            if (current?.stableKey === sk && current.activityMode === 'visible') restore()
+          })
         }
+        bgNavigationFrozenRef.current.delete(sk)
       })
       pendingScrollRestoreRef.current.clear()
     }
@@ -588,7 +621,7 @@ function BackgroundPreserveRoot({
                 const stableKey = entry.stableKey
                 const current = stackRef.current.find(e => e.stableKey === stableKey)
                 if (!current || !current.alive) {
-                  detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, stableKey)
+                  detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgNavigationFrozenRef.current, stableKey)
                   stackRef.current = stackRef.current.filter(e => e.stableKey !== stableKey)
                   nodeRefsCache.current.delete(stableKey)
                   bgScrollsRef.current.delete(stableKey)
@@ -643,7 +676,7 @@ function matchFilter(pathname: string, filter: KeepAliveFilter, cacheName?: stri
     filter.lastIndex = 0
     return cacheName !== undefined && filter.test(cacheName)
   }
-  if (typeof filter === 'function') return filter(pathname)
+  if (typeof filter === 'function') return filter(pathname, cacheName)
   return filter.includes(pathname) || (cacheName !== undefined && filter.includes(cacheName))
 }
 
@@ -680,6 +713,7 @@ function detachScrollHandler(
 function detachBgScrollHandler(
   bgScrollHandlers: Map<string, { handler: (event: Event) => void; touchStartHandler: () => void; touchEndHandler: () => void; container: HTMLElement }>,
   bgFrozen: Map<string, boolean>,
+  bgNavigationFrozen: Set<string>,
   key: string,
 ): void {
   const entry = bgScrollHandlers.get(key)
@@ -691,6 +725,7 @@ function detachBgScrollHandler(
     bgScrollHandlers.delete(key)
   }
   bgFrozen.delete(key)
+  bgNavigationFrozen.delete(key)
 }
 
 /**
@@ -731,6 +766,7 @@ function KeepAliveRoot({
   const outlet = useOutlet()
   const locCtx = useContext(UNSAFE_LocationContext)
   const pageKey = location.pathname
+  const cacheLimit = Number.isFinite(max) ? Math.max(1, Math.floor(max)) : 30
 
   type PageSnap = { outlet: ReactNode; locCtx: unknown; cacheName?: string }
 
@@ -827,9 +863,9 @@ function KeepAliveRoot({
     pendingEnterRef.current.add(pageKey)
   }
 
-  if (max !== undefined && keysRef.current.length > max) {
-    const evicted = keysRef.current.slice(0, keysRef.current.length - max)
-    keysRef.current = keysRef.current.slice(keysRef.current.length - max)
+  if (keysRef.current.length > cacheLimit) {
+    const evicted = keysRef.current.slice(0, keysRef.current.length - cacheLimit)
+    keysRef.current = keysRef.current.slice(keysRef.current.length - cacheLimit)
     for (const k of evicted) {
       snapshotsRef.current.delete(k)
       scrollCacheRef.current.delete(k)
@@ -1242,7 +1278,8 @@ export default function AnimatedOutlet({
   const location = useLocation()
   const keepAliveCtx = useContext(KeepAliveContext)
 
-  // <KeepAlive> wrapper takes precedence over route handle flags.
+  // <KeepAlive> enables caching for this subtree; an explicit outlet mode may
+  // specialize a nested outlet without creating another cache policy provider.
   const keepAlive = keepAliveCtx !== null || matches.some((m) => {
     const h = m.handle as Record<string, unknown> | null | undefined
     return h?.keepAlive === true || h?.keepBackground === true
@@ -1253,7 +1290,7 @@ export default function AnimatedOutlet({
   }
 
   if (keepAlive) {
-    // When wrapped in <KeepAlive>, use context mode directly.
+    // When wrapped in <KeepAlive>, inherit its mode unless this outlet overrides it.
     // When triggered by route handle, fall back to resolveOutletMode.
     const effectiveMode = keepAliveCtx !== null
       ? mode ?? keepAliveCtx.mode

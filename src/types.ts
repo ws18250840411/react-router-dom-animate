@@ -85,14 +85,17 @@ export interface AnimPresetRegistry {
 /**
  * Filter for controlling which pages are cached in keepAlive switch mode.
  *
- * - `string[]`: array of exact pathnames to match (e.g. `['/home', '/profile']`)
- * - `RegExp`: regex tested against the pathname (e.g. `/^\/tabs\//`)
- * - `(pathname: string) => boolean`: custom predicate function
+ * - `string[]`: exact pathnames or route `keepAliveName` values
+ * - `RegExp`: tested against the pathname and then the route `keepAliveName`
+ * - `(pathname, cacheName) => boolean`: custom predicate function
  *
  * Used by `include` (allow-list) and `exclude` (deny-list) props on
  * `<KeepAlive mode="switch">`.
  */
-export type KeepAliveFilter = ReadonlyArray<string> | RegExp | ((pathname: string) => boolean)
+export type KeepAliveFilter =
+  | ReadonlyArray<string>
+  | RegExp
+  | ((pathname: string, cacheName?: string) => boolean)
 
 /** Route handle fields recognized by AnimatedOutlet and KeepAlive. */
 export interface AnimatedRouteHandle {

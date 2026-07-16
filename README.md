@@ -36,6 +36,49 @@ export function RootLayout() {
 
 完成。所有子页面现在都有默认的 `cover`（覆盖滑入）动画。
 
+### 根 Layout 同时开启转场与缓存（推荐）
+
+应用需要“所有页面有转场，三个主菜单保持状态，列表进入详情再返回也保持现场”时，只在根 Layout 声明一次缓存策略：
+
+```tsx
+import { AnimatedOutlet, KeepAlive } from 'react-router-dom-animate'
+
+export function RootLayout() {
+  return (
+    <KeepAlive include={['HomeTab', 'DiscoverTab', 'ProfileTab']} max={3}>
+      <AnimatedOutlet />
+    </KeepAlive>
+  )
+}
+```
+
+给需要长期缓存的路由声明稳定名称：
+
+```tsx
+import type { AnimatedRouteHandle } from 'react-router-dom-animate'
+
+export const handle = {
+  keepAliveName: 'HomeTab',
+  tabIndex: 0,
+} satisfies AnimatedRouteHandle
+```
+
+根层默认使用 `stack`：进入详情时保留背景菜单页，返回恢复原 DOM、React state 和滚动位置。菜单 Layout 使用即时 `switch`，不额外创建缓存策略：
+
+```tsx
+export function TabsLayout() {
+  return <AnimatedOutlet mode="switch" />
+}
+```
+
+只有菜单确实需要动画时才显式覆盖：
+
+```tsx
+<AnimatedOutlet mode="switch" transition="slide" />
+```
+
+`switch` 未设置 `transition` 时始终即时切换；它不会继承根层的 `cover` 动画。
+
 ### 第二步：指定动画类型
 
 **最简单的方式** — 在对应页面的路由上声明：
@@ -88,7 +131,7 @@ navigate('/detail/1', { state: { transition: 'cover' } })
 | Prop | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | `transition` | `string` | `'cover'` | 内置：`cover` `slide` `fade` `scale` `modal` `none`；也可用自定义预设名称 |
-| `mode` | `'stack' \| 'switch'` | `'stack'` | 无 keepAlive 时：`stack` 有方向感，`switch` 平级无方向。**在 `<KeepAlive>` 内部时此 prop 被忽略** |
+| `mode` | `'stack' \| 'switch'` | `'stack'` | `stack` 有方向感，`switch` 平级即时切换；在 `<KeepAlive>` 内默认继承其模式，显式传值可覆盖当前 Outlet |
 | `className` | `string` | — | 附加到外层 `.animated-outlet-group` 上的 class |
 
 ### `<KeepAlive>`
@@ -110,14 +153,14 @@ navigate('/detail/1', { state: { transition: 'cover' } })
 | Prop | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | `mode` | `'stack' \| 'switch'` | `'stack'` | `stack`：栈式压入详情；`switch`：Tab 缓存 |
-| `max` | `number` | `30` | 最多缓存多少页，超出按 LRU 淘汰（仅 switch 模式）|
-| `include` | `string[] \| RegExp \| (path) => boolean` | — | 缓存白名单，只有匹配的页面才缓存（仅 switch 模式）|
-| `exclude` | `string[] \| RegExp \| (path) => boolean` | — | 缓存黑名单，匹配的页面离开时立即销毁（仅 switch 模式）|
+| `max` | `number` | `30` | 最多缓存多少页，超出按 LRU 淘汰；小于 1 时按 1 处理（仅 switch 模式）|
+| `include` | `readonly string[] \| RegExp \| (path, name) => boolean` | — | 缓存白名单，可匹配 pathname 或路由 `keepAliveName`（仅 switch 模式）|
+| `exclude` | `readonly string[] \| RegExp \| (path, name) => boolean` | — | 缓存黑名单，可匹配 pathname 或路由 `keepAliveName`（仅 switch 模式）|
 | `aliveRef` | `RefObject<KeepAliveRef>` | — | 命令式缓存控制句柄（仅 switch 模式）|
 
 > **注意**：`mode` 建议固定不变。若运行时将 `mode` 从 `'switch'` 切换到 `'stack'`（或反向），会触发 `<KeepAlive>` Context 重建，所有已缓存的页面状态将全部清除。
 
-> **也可通过路由 `handle` 自动触发**（不使用 `<KeepAlive>` 时的备用方式，仅支持栈模式）：
+> **也可通过路由 `handle` 自动触发**（不使用 `<KeepAlive>` 时，仅支持栈模式）：
 >
 > ```ts
 > { path: 'detail', handle: { transition: 'cover', keepAlive: true }, element: <Layout /> }
