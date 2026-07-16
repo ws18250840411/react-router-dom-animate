@@ -361,11 +361,13 @@ function BackgroundPreserveRoot({
   const bgScrollsRef = useRef(new Map<string, Array<[HTMLElement, number, number]>>())
   const bgScrollHandlersRef = useRef(new Map<string, {
     handler: (event: Event) => void
+    clickHandler: () => void
     touchStartHandler: () => void
     touchEndHandler: () => void
     container: HTMLElement
   }>())
   const bgFrozenRef = useRef(new Map<string, boolean>())
+  const bgInteractionFrozenRef = useRef(new Set<string>())
   // Once a page starts leaving, ignore browser-generated scroll events until it
   // is restored. Some engines reset descendant scrollTop when Activity applies
   // display:none; that reset must never overwrite the pre-navigation snapshot.
@@ -399,6 +401,14 @@ function BackgroundPreserveRoot({
       for (let i = stack.length - 1; i >= 0; i--) {
         if (stack[i].locKey === locKey) { bgIdx = i; break }
       }
+      // Data-router loaders and redirects may replace a history entry while
+      // preserving the same logical page. Fall back to the scoped page identity
+      // so POP can still reactivate the existing Activity subtree.
+      if (bgIdx < 0) {
+        for (let i = stack.length - 1; i >= 0; i--) {
+          if (stack[i].stableKey === stableKey && stack[i].alive) { bgIdx = i; break }
+        }
+      }
       if (bgIdx >= 0) {
         const below = stackRef.current.slice(0, bgIdx)
         const poppedOff = stackRef.current.slice(bgIdx + 1).map(e => ({ ...e, alive: false }))
@@ -414,7 +424,7 @@ function BackgroundPreserveRoot({
         // stableKey update). Reset — the Activity key (stableKey) may be the same, so React
         // will reconcile without unmounting if it matches.
         for (const e of stackRef.current) {
-          detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgNavigationFrozenRef.current, e.stableKey)
+          detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgInteractionFrozenRef.current, bgNavigationFrozenRef.current, e.stableKey)
           nodeRefsCache.current.delete(e.stableKey)
           bgScrollsRef.current.delete(e.stableKey)
         }
@@ -429,15 +439,21 @@ function BackgroundPreserveRoot({
         i === arr.length - 1 ? { ...e, locKey, outlet, locCtx } : e,
       )
     } else if (navType === 'PUSH') {
-      const scrolls = bgScrollsRef.current.get(topEntry.stableKey)
-      if (scrolls?.length) {
-        for (let index = scrolls.length - 1; index >= 0; index--) {
-          const element = scrolls[index][0]
-          if (!element.isConnected) {
-            scrolls.splice(index, 1)
-          } else {
-            scrolls[index] = [element, element.scrollTop, element.scrollLeft]
+      // Refresh once at the navigation boundary when layout still exposes a
+      // non-zero position. The click-capture freeze preserves the earlier event
+      // snapshot when nested route rendering has already collapsed the layout.
+      // This O(DOM nodes) scan runs on PUSH only, never during scrolling.
+      if (!bgFrozenRef.current.get(topEntry.stableKey)) {
+        const container = topEntry.nodeRef.current
+        if (container) {
+          const scrolls: Array<[HTMLElement, number, number]> = []
+          const elements = [container, ...container.querySelectorAll<HTMLElement>('*')]
+          for (const element of elements) {
+            if (element.scrollTop !== 0 || element.scrollLeft !== 0) {
+              scrolls.push([element, element.scrollTop, element.scrollLeft])
+            }
           }
+          if (scrolls.length > 0) bgScrollsRef.current.set(topEntry.stableKey, scrolls)
         }
       }
       bgNavigationFrozenRef.current.add(topEntry.stableKey)
@@ -461,7 +477,7 @@ function BackgroundPreserveRoot({
       // REPLACE with a different stableKey: swap top entry.
       const replaced = stackRef.current[stackRef.current.length - 1]
       if (replaced) {
-        detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgNavigationFrozenRef.current, replaced.stableKey)
+        detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgInteractionFrozenRef.current, bgNavigationFrozenRef.current, replaced.stableKey)
         nodeRefsCache.current.delete(replaced.stableKey)
         bgScrollsRef.current.delete(replaced.stableKey)
       }
@@ -495,7 +511,7 @@ function BackgroundPreserveRoot({
       // The scroll event's target is exactly the element that scrolled, so we only
       // read/update that one element rather than scanning the whole subtree on every frame.
       const handler = (event: Event) => {
-        if (bgFrozenRef.current.get(key) || bgNavigationFrozenRef.current.has(key)) return
+        if (bgFrozenRef.current.get(key) || bgInteractionFrozenRef.current.has(key) || bgNavigationFrozenRef.current.has(key)) return
         const el = event.target as HTMLElement | null
         if (!el) return
         let cache = bgScrollsRef.current.get(key)
@@ -534,17 +550,22 @@ function BackgroundPreserveRoot({
         // Unfreeze after 100 ms so click/navigate has time to fire first.
         window.setTimeout(() => bgFrozenRef.current.delete(key), 100)
       }
+      const clickHandler = () => {
+        bgInteractionFrozenRef.current.add(key)
+        window.setTimeout(() => bgInteractionFrozenRef.current.delete(key), 0)
+      }
 
       container.addEventListener('scroll', handler, { capture: true, passive: true })
+      container.addEventListener('click', clickHandler, { capture: true, passive: true })
       container.addEventListener('touchstart', touchStartHandler, { capture: true, passive: true })
       container.addEventListener('touchend', touchEndHandler, { capture: true, passive: true })
       container.addEventListener('touchcancel', touchEndHandler, { capture: true, passive: true })
-      bgScrollHandlersRef.current.set(key, { handler, touchStartHandler, touchEndHandler, container })
+      bgScrollHandlersRef.current.set(key, { handler, clickHandler, touchStartHandler, touchEndHandler, container })
     })
     // Detach listeners for entries that are no longer in the cache.
     bgScrollHandlersRef.current.forEach((_, key) => {
       if (!nodeRefsCache.current.has(key)) {
-        detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgNavigationFrozenRef.current, key)
+        detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgInteractionFrozenRef.current, bgNavigationFrozenRef.current, key)
       }
     })
   })
@@ -571,9 +592,11 @@ function BackgroundPreserveRoot({
             window.cancelAnimationFrame(scrollRestoreFrameRef.current)
           }
           scrollRestoreFrameRef.current = window.requestAnimationFrame(() => {
-            scrollRestoreFrameRef.current = null
-            const current = stackRef.current[stackRef.current.length - 1]
-            if (current?.stableKey === sk && current.activityMode === 'visible') restore()
+            scrollRestoreFrameRef.current = window.requestAnimationFrame(() => {
+              scrollRestoreFrameRef.current = null
+              const current = stackRef.current[stackRef.current.length - 1]
+              if (current?.stableKey === sk && current.activityMode === 'visible') restore()
+            })
           })
         }
         bgNavigationFrozenRef.current.delete(sk)
@@ -621,7 +644,7 @@ function BackgroundPreserveRoot({
                 const stableKey = entry.stableKey
                 const current = stackRef.current.find(e => e.stableKey === stableKey)
                 if (!current || !current.alive) {
-                  detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgNavigationFrozenRef.current, stableKey)
+                  detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgInteractionFrozenRef.current, bgNavigationFrozenRef.current, stableKey)
                   stackRef.current = stackRef.current.filter(e => e.stableKey !== stableKey)
                   nodeRefsCache.current.delete(stableKey)
                   bgScrollsRef.current.delete(stableKey)
@@ -711,20 +734,23 @@ function detachScrollHandler(
 
 /** Remove scroll + touch listeners added by BackgroundPreserveRoot, if any. */
 function detachBgScrollHandler(
-  bgScrollHandlers: Map<string, { handler: (event: Event) => void; touchStartHandler: () => void; touchEndHandler: () => void; container: HTMLElement }>,
+  bgScrollHandlers: Map<string, { handler: (event: Event) => void; clickHandler: () => void; touchStartHandler: () => void; touchEndHandler: () => void; container: HTMLElement }>,
   bgFrozen: Map<string, boolean>,
+  bgInteractionFrozen: Set<string>,
   bgNavigationFrozen: Set<string>,
   key: string,
 ): void {
   const entry = bgScrollHandlers.get(key)
   if (entry) {
     entry.container.removeEventListener('scroll', entry.handler, { capture: true })
+    entry.container.removeEventListener('click', entry.clickHandler, { capture: true })
     entry.container.removeEventListener('touchstart', entry.touchStartHandler, { capture: true })
     entry.container.removeEventListener('touchend', entry.touchEndHandler, { capture: true })
     entry.container.removeEventListener('touchcancel', entry.touchEndHandler, { capture: true })
     bgScrollHandlers.delete(key)
   }
   bgFrozen.delete(key)
+  bgInteractionFrozen.delete(key)
   bgNavigationFrozen.delete(key)
 }
 
