@@ -92,7 +92,17 @@ export interface AnimPresetRegistry {
  * Used by `include` (allow-list) and `exclude` (deny-list) props on
  * `<KeepAlive mode="switch">`.
  */
-export type KeepAliveFilter = string[] | RegExp | ((pathname: string) => boolean)
+export type KeepAliveFilter = ReadonlyArray<string> | RegExp | ((pathname: string) => boolean)
+
+/** Route handle fields recognized by AnimatedOutlet and KeepAlive. */
+export interface AnimatedRouteHandle {
+  transition?: RouteAnimType
+  mode?: OutletMode
+  tabIndex?: number
+  keepAlive?: boolean
+  keepBackground?: boolean
+  keepAliveName?: string
+}
 
 /**
  * Imperative handle exposed via `aliveRef` on `<KeepAlive mode="switch">`.

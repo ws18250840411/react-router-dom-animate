@@ -72,7 +72,7 @@ describe('layoutRouteId', () => {
 
     expect(layoutRouteId(from.matches as never, from.path)).toBe(layoutId)
     expect(layoutRouteId(to.matches as never, to.path)).toBe(layoutId)
-    expect(sameLayoutPage(from, to)).toBe(true)
+    expect(sameLayoutPage(from as never, to as never)).toBe(true)
   })
 
   it('列表进详情不算 sameLayoutPage（同 layout 但路径加深）', () => {
@@ -98,7 +98,7 @@ describe('layoutRouteId', () => {
       ],
     }
 
-    expect(sameLayoutPage(from, to)).toBe(false)
+    expect(sameLayoutPage(from as never, to as never)).toBe(false)
   })
 
   it('Tab A→B 时根层 nav 不参与 slide', async () => {

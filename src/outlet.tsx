@@ -627,11 +627,24 @@ function BackgroundPreserveRoot({
   )
 }
 
-/** Returns true if `pathname` matches the given filter. */
-function matchFilter(pathname: string, filter: KeepAliveFilter): boolean {
-  if (Array.isArray(filter)) return filter.includes(pathname)
-  if (filter instanceof RegExp) return filter.test(pathname)
-  return filter(pathname)
+function routeCacheName(matches: UIMatch[]): string | undefined {
+  for (let index = matches.length - 1; index >= 0; index--) {
+    const name = (matches[index]?.handle as { keepAliveName?: unknown } | undefined)?.keepAliveName
+    if (typeof name === 'string') return name
+  }
+  return undefined
+}
+
+/** Returns true if pathname or route cache name matches the given filter. */
+function matchFilter(pathname: string, filter: KeepAliveFilter, cacheName?: string): boolean {
+  if (filter instanceof RegExp) {
+    filter.lastIndex = 0
+    if (filter.test(pathname)) return true
+    filter.lastIndex = 0
+    return cacheName !== undefined && filter.test(cacheName)
+  }
+  if (typeof filter === 'function') return filter(pathname)
+  return filter.includes(pathname) || (cacheName !== undefined && filter.includes(cacheName))
 }
 
 /**
@@ -640,9 +653,14 @@ function matchFilter(pathname: string, filter: KeepAliveFilter): boolean {
  * When `exclude` is set, matching pages are discarded on exit.
  * If neither is set, all pages are cached.
  */
-function shouldCache(pathname: string, include: KeepAliveFilter | undefined, exclude: KeepAliveFilter | undefined): boolean {
-  if (include !== undefined && !matchFilter(pathname, include)) return false
-  if (exclude !== undefined && matchFilter(pathname, exclude)) return false
+function shouldCache(
+  pathname: string,
+  include: KeepAliveFilter | undefined,
+  exclude: KeepAliveFilter | undefined,
+  cacheName?: string,
+): boolean {
+  if (include !== undefined && !matchFilter(pathname, include, cacheName)) return false
+  if (exclude !== undefined && matchFilter(pathname, exclude, cacheName)) return false
   return true
 }
 
@@ -714,7 +732,7 @@ function KeepAliveRoot({
   const locCtx = useContext(UNSAFE_LocationContext)
   const pageKey = location.pathname
 
-  type PageSnap = { outlet: ReactNode; locCtx: unknown }
+  type PageSnap = { outlet: ReactNode; locCtx: unknown; cacheName?: string }
 
   const snapshotsRef = useRef(new Map<string, PageSnap>())
   // Tail is most-recently-used (LRU order).
@@ -786,7 +804,7 @@ function KeepAliveRoot({
     return () => window.clearTimeout(timer)
   }, [location.key, activePlan.duration, settledLocation.key, commitSettled])
 
-  snapshotsRef.current.set(pageKey, { outlet, locCtx })
+  snapshotsRef.current.set(pageKey, { outlet, locCtx, cacheName: routeCacheName(matches) })
 
   // Track whether the active page changed so we know when to apply the two-render trick.
   const prevPageKeyRef = useRef('')
@@ -899,7 +917,7 @@ function KeepAliveRoot({
     let changed = false
     activityModesRef.current.forEach((mode, key) => {
       if (key !== pageKey && mode === 'visible') {
-        if (!shouldCache(key, include, exclude)) {
+        if (!shouldCache(key, include, exclude, snapshotsRef.current.get(key)?.cacheName)) {
           detachScrollHandler(scrollHandlersRef.current, key)
           keysRef.current = keysRef.current.filter((k) => k !== key)
           snapshotsRef.current.delete(key)
@@ -986,7 +1004,12 @@ function KeepAliveRoot({
                   // activityModesRef would gain an orphaned entry for a key that is no longer
                   // in keysRef, causing a minor memory leak.
                   if (!keysRef.current.includes(key)) return
-                  if (!shouldCache(key, include, exclude)) {
+                  if (!shouldCache(
+                    key,
+                    include,
+                    exclude,
+                    snapshotsRef.current.get(key)?.cacheName,
+                  )) {
                     // Non-cacheable: remove entirely so next visit re-mounts fresh.
                     detachScrollHandler(scrollHandlersRef.current, key)
                     keysRef.current = keysRef.current.filter((k) => k !== key)
@@ -1233,7 +1256,7 @@ export default function AnimatedOutlet({
     // When wrapped in <KeepAlive>, use context mode directly.
     // When triggered by route handle, fall back to resolveOutletMode.
     const effectiveMode = keepAliveCtx !== null
-      ? keepAliveCtx.mode
+      ? mode ?? keepAliveCtx.mode
       : resolveOutletMode(mode, matches, location.state)
 
     if (effectiveMode === 'switch') {
