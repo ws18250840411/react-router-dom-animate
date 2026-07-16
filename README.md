@@ -1,6 +1,6 @@
 # react-router-dom-animate
 
-为 [react-router-dom](https://reactrouter.com/) v7+ 提供栈式页面转场的轻量动画库，基于 React 19 [`<Activity>`](https://react.dev/reference/react/Activity)。
+为 [react-router-dom](https://reactrouter.com/) v7 提供路由转场与页面缓存能力，基于 React 19.2 [`<Activity>`](https://react.dev/reference/react/Activity)。
 
 **安装**
 
@@ -8,9 +8,11 @@
 npm install react-router-dom-animate
 ```
 
-> Peer deps：`react` ≥19、`react-dom` ≥19、`react-router-dom` ≥7
+> Peer deps：`react` 19.2+、`react-dom` 19.2+、`react-router-dom` 7
 
 > **仅支持浏览器环境**：本库基于 React 19 `<Activity>` 及 DOM API，**不支持 SSR / Server Components**。如果项目使用 Remix 或 Next.js 的 SSR 功能，请将使用了 `AnimatedOutlet` / `KeepAlive` 的组件标记为 `'use client'`，并确保它们在浏览器端渲染。
+
+> **需要 Data Router**：请使用 `createBrowserRouter` / `createHashRouter` / `createMemoryRouter` 配合 `<RouterProvider>`。路由 `handle`、嵌套布局识别和缓存名称依赖 React Router 的 `useMatches`，不支持仅使用声明式 `<BrowserRouter><Routes>` 的配置。
 
 ---
 
@@ -45,7 +47,7 @@ import { AnimatedOutlet, KeepAlive } from 'react-router-dom-animate'
 
 export function RootLayout() {
   return (
-    <KeepAlive include={['HomeTab', 'DiscoverTab', 'ProfileTab']} max={3}>
+    <KeepAlive include={['HomeTab', 'DiscoverTab', 'ProfileTab']}>
       <AnimatedOutlet />
     </KeepAlive>
   )
@@ -267,7 +269,7 @@ export function TabsLayout() {
 
 ## keepAlive 页面保活
 
-切换页面时**不会 remount**，state / DOM / 滚动位置完整保留。底层基于 React 19 官方 `<Activity>`，无第三方依赖。
+切换页面时**不会 remount**，state / DOM / 滚动位置完整保留。缓存基于 React 19 官方 `<Activity>`，转场调度使用 `react-transition-group`。
 
 用 `<KeepAlive>` 包裹需要缓存的 `<AnimatedOutlet>`，直观地表达"这里需要保活"：
 
@@ -287,6 +289,8 @@ import { AnimatedOutlet, KeepAlive } from 'react-router-dom-animate'
 ```
 
 前进（PUSH）时背景页留在 DOM；返回（POP）时前景页退出，背景页精确恢复（包括滚动位置）。
+
+stack 模式不使用 `max`：它只保留当前有效返回栈，同层页面复用同一个栈项；POP 动画结束后会清理离栈页面、DOM ref、滚动快照和事件监听。若需要缓存数量白名单或 LRU，请在菜单层使用 switch 模式的 `include` / `max`。
 
 ### Switch 模式（Tab 缓存）
 
@@ -383,16 +387,15 @@ function CachedBadge({ aliveRef }: { aliveRef: React.RefObject<KeepAliveRef | un
 }
 ```
 
-> **性能提示**：`include` / `exclude` 如果传内联函数，父组件每次重渲染都会生成新的函数引用，
-> 导致 `KeepAlive` Context 重建，进而让 `AnimatedOutlet` 重渲染。
-> 推荐用 `useCallback` 或模块级常量保持引用稳定：
+> **性能提示**：库内部通过 ref 保存 `include` / `exclude`，内联函数不会导致 KeepAlive Context 重建。
+> 复杂过滤逻辑仍建议用 `useCallback` 或模块级常量，便于调试和复用：
 >
 > ```tsx
 > // ✅ 推荐：稳定引用
 > const isPaymentPage = useCallback((p: string) => p.startsWith('/payment'), [])
 > <KeepAlive mode="switch" exclude={isPaymentPage}>
 >
-> // ⚠️ 避免：每次 render 新引用
+> // 同样可用：库内部不会因此重建 Context
 > <KeepAlive mode="switch" exclude={(p) => p.startsWith('/payment')}>
 > ```
 
@@ -446,6 +449,8 @@ import { setAnimDuration } from 'react-router-dom-animate'
 
 setAnimDuration('modal', 450)  // 优先级高于 CSS 变量
 ```
+
+时长必须是有限的非负数；`0` 会完全禁用对应动画。系统启用“减少动态效果”时，库也会自动使用 0ms 转场并立即恢复交互。
 
 ### 注册自定义动画
 

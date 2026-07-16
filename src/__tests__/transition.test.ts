@@ -1,18 +1,24 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   animPresetRegistry,
   classNamesFor,
   planTransition,
   registerAnimPreset,
+  registerLayoutScope,
+  registerPageAnim,
   resolveAnim,
   resolveOutletMode,
+  unregisterLayoutScope,
+  unregisterPageAnim,
 } from '../transition'
 import type { RouteSnapshot } from '../types'
 
 function snap(path: string, key = path, state: unknown = null): RouteSnapshot {
   return { path, key, state, matches: [] }
 }
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('resolveAnim', () => {
   it('state.transition 优先级最高', () => {
@@ -25,6 +31,32 @@ describe('resolveAnim', () => {
       { id: 'modal', pathname: '/modal', handle: { transition: 'modal' } },
     ] as never
     expect(resolveAnim({ path: '/modal', key: 'm', state: null, matches }, 'cover')).toBe('modal')
+  })
+
+  it('重叠页面注册卸载后恢复前一个实例的动画配置', () => {
+    registerPageAnim('/shared', 'fade')
+    registerPageAnim('/shared', 'slide')
+    expect(resolveAnim(snap('/shared'), 'cover')).toBe('slide')
+
+    unregisterPageAnim('/shared', 'slide')
+    expect(resolveAnim(snap('/shared'), 'cover')).toBe('fade')
+    unregisterPageAnim('/shared', 'fade')
+  })
+
+  it('重叠 layout 注册卸载后恢复前一个实例的动画配置', () => {
+    const matches = [
+      { id: 'shared-layout', pathname: '/shared' },
+      { id: 'leaf', pathname: '/shared/page' },
+    ] as never
+    const snapshot = { path: '/shared/page', key: 'page', state: null, matches }
+
+    registerLayoutScope('shared-layout', 'fade')
+    registerLayoutScope('shared-layout', 'slide')
+    expect(resolveAnim(snapshot, 'cover')).toBe('slide')
+
+    unregisterLayoutScope('shared-layout', 'slide')
+    expect(resolveAnim(snapshot, 'cover')).toBe('fade')
+    unregisterLayoutScope('shared-layout', 'fade')
   })
 })
 
@@ -102,6 +134,17 @@ describe('resolveOutletMode', () => {
 describe('planTransition', () => {
   const types = ['cover', 'slide', 'fade'] as const
 
+  it('系统减少动态效果时直接返回 0ms IDLE', () => {
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: true }),
+    })
+    const plan = planTransition('PUSH', snap('/a'), snap('/b'), 'cover')
+    expect(plan).toEqual({
+      classNames: { enter: '', enterActive: '', exit: '', exitActive: '' },
+      duration: 0,
+    })
+  })
+
   it('custom preset 通过 forward/back 注册', () => {
     registerAnimPreset({
       type: 'flip',
@@ -111,6 +154,20 @@ describe('planTransition', () => {
     expect(animPresetRegistry.has('flip')).toBe(true)
     const { classNames } = planTransition('PUSH', snap('/a'), snap('/b', 'b', { transition: 'flip' }), 'cover')
     expect(classNames.enterActive).toBe('flip-in')
+  })
+
+  it('拒绝非法动画时长和空 preset 名称', () => {
+    expect(() => registerAnimPreset({
+      type: '',
+      forward: { enter: '', enterActive: '', exit: '', exitActive: '' },
+      back: { enter: '', enterActive: '', exit: '', exitActive: '' },
+    })).toThrow(TypeError)
+    expect(() => registerAnimPreset({
+      type: 'invalid-duration',
+      forward: { enter: '', enterActive: '', exit: '', exitActive: '' },
+      back: { enter: '', enterActive: '', exit: '', exitActive: '' },
+      durationMs: -1,
+    })).toThrow(RangeError)
   })
 
   it('PUSH + state.transition=slide', () => {

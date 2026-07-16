@@ -45,8 +45,12 @@
   background-color: var(--fr-page-bg-dark, #030712);
 }
 
+.light .animated-outlet-page {
+  background-color: var(--fr-page-bg, #f9fafb);
+}
+
 @media (prefers-color-scheme: dark) {
-  .animated-outlet-page {
+  :root:not(.light) .animated-outlet-page {
     background-color: var(--fr-page-bg-dark, #030712);
   }
 }

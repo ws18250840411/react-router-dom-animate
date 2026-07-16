@@ -1,7 +1,7 @@
 {
   "name": "react-router-dom-animate",
-  "version": "1.1.1",
-  "description": "Stack-based route transitions for react-router-dom",
+  "version": "1.2.0",
+  "description": "Route transitions and KeepAlive caching for React Router",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -21,9 +21,32 @@
   "files": [
     "dist"
   ],
+  "keywords": [
+    "react",
+    "react-router",
+    "route-transition",
+    "keep-alive",
+    "animation"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitee.com/ws18250840411/react-router-dom-animate.git"
+  },
+  "homepage": "https://gitee.com/ws18250840411/react-router-dom-animate",
+  "bugs": {
+    "url": "https://gitee.com/ws18250840411/react-router-dom-animate/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
+  },
   "scripts": {
     "build": "tsup",
-    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test && npm run demo:build",
+    "prepublishOnly": "npm run check && npm run build",
     "demo": "npm run build && npm run dev --prefix demo",
     "demo:src": "npm run dev:src --prefix demo",
     "demo:build": "npm run build --prefix demo",
@@ -32,25 +55,26 @@
     "test:watch": "vitest"
   },
   "peerDependencies": {
-    "react": ">=19.0.0",
-    "react-dom": ">=19.0.0",
-    "react-router-dom": ">=7.0.0"
+    "react": ">=19.2.0 <20.0.0",
+    "react-dom": ">=19.2.0 <20.0.0",
+    "react-router-dom": ">=7.0.0 <8.0.0"
   },
   "dependencies": {
     "react-transition-group": "^4.4.5"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.13.3",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@types/react-transition-group": "^4.4.12",
-    "@testing-library/react": "^16.3.2",
     "jsdom": "^26.1.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.17.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.10"
   },
   "license": "MIT"
 }

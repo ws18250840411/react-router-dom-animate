@@ -22,10 +22,17 @@ let durationCached = false
 const typedDurationCache = new Map<string, number>()
 
 function parseCssMs(raw: string): number | undefined {
-  if (!raw) return undefined
-  if (raw.endsWith('ms')) return Number.parseInt(raw, 10) || undefined
-  if (raw.endsWith('s')) return Math.round(Number.parseFloat(raw) * 1000) || undefined
-  return undefined
+  const match = /^(\d+(?:\.\d+)?|\.\d+)(ms|s)$/.exec(raw)
+  if (!match) return undefined
+  const value = Number.parseFloat(match[1]) * (match[2] === 's' ? 1000 : 1)
+  return Number.isFinite(value) ? Math.round(value) : undefined
+}
+
+function normalizeDurationMs(ms: number): number {
+  if (!Number.isFinite(ms) || ms < 0) {
+    throw new RangeError('Animation duration must be a finite, non-negative number.')
+  }
+  return Math.round(ms)
 }
 
 /**
@@ -99,7 +106,13 @@ export const animPresetRegistry: AnimPresetRegistry = {
 }
 
 export function registerAnimPreset(preset: AnimPreset): void {
-  animPresetRegistry.register(preset)
+  if (!preset.type.trim()) throw new TypeError('Animation preset type must not be empty.')
+  animPresetRegistry.register({
+    ...preset,
+    durationMs: preset.durationMs === undefined
+      ? undefined
+      : normalizeDurationMs(preset.durationMs),
+  })
 }
 
 /**
@@ -114,9 +127,10 @@ export function registerAnimPreset(preset: AnimPreset): void {
  *   setAnimDuration('slide', 250)
  */
 export function setAnimDuration(type: RouteAnimType, ms: number): void {
+  const duration = normalizeDurationMs(ms)
   const existing = presets.get(type)
-  if (existing) presets.set(type, { ...existing, durationMs: ms })
-  typedDurationCache.set(type, ms)
+  if (existing) presets.set(type, { ...existing, durationMs: duration })
+  typedDurationCache.set(type, duration)
 }
 
 function parseRouteAnim(value: unknown): RouteAnimType | undefined {
@@ -371,36 +385,51 @@ function isAnimated(classNames: ClassNames): boolean {
  * symmetrically (mount → register, unmount → unregister) so contamination
  * is limited to the window between mount and unmount.
  */
-const pageAnims = new Map<string, RouteAnimType>()
-const layoutScopes = new Map<string, RouteAnimType>()
+const pageAnims = new Map<string, RouteAnimType[]>()
+const layoutScopes = new Map<string, RouteAnimType[]>()
 
 function normalizePath(pathname: string): string {
   return pathname.replace(/\/$/, '') || '/'
 }
 
 export function registerPageAnim(pathname: string, transition: RouteAnimType): void {
-  pageAnims.set(normalizePath(pathname), transition)
+  const key = normalizePath(pathname)
+  pageAnims.set(key, [...(pageAnims.get(key) ?? []), transition])
 }
 
-export function unregisterPageAnim(pathname: string): void {
-  pageAnims.delete(normalizePath(pathname))
+export function unregisterPageAnim(pathname: string, transition: RouteAnimType): void {
+  unregisterOverride(pageAnims, normalizePath(pathname), transition)
 }
 
 function pageAnim(pathname: string): RouteAnimType | undefined {
-  return pageAnims.get(normalizePath(pathname))
+  const values = pageAnims.get(normalizePath(pathname))
+  return values?.[values.length - 1]
 }
 
 export function registerLayoutScope(routeId: string, transition: RouteAnimType): void {
-  layoutScopes.set(routeId, transition)
+  layoutScopes.set(routeId, [...(layoutScopes.get(routeId) ?? []), transition])
 }
 
-export function unregisterLayoutScope(routeId: string): void {
-  layoutScopes.delete(routeId)
+export function unregisterLayoutScope(routeId: string, transition: RouteAnimType): void {
+  unregisterOverride(layoutScopes, routeId, transition)
+}
+
+function unregisterOverride(
+  registry: Map<string, RouteAnimType[]>,
+  key: string,
+  transition: RouteAnimType,
+): void {
+  const values = registry.get(key)
+  if (!values) return
+  const index = values.lastIndexOf(transition)
+  if (index >= 0) values.splice(index, 1)
+  if (values.length === 0) registry.delete(key)
 }
 
 function layoutScopeForMatches(matches: UIMatch[] | undefined): RouteAnimType | undefined {
   if (!matches || matches.length < 2) return undefined
-  return layoutScopes.get(matches[matches.length - 2]?.id ?? '')
+  const values = layoutScopes.get(matches[matches.length - 2]?.id ?? '')
+  return values?.[values.length - 1]
 }
 
 export function layoutRouteId(matches: UIMatch[], pathname: string): string | undefined {
@@ -554,6 +583,11 @@ export function planTransition(
   options?: { tabs?: boolean },
 ): TransitionPlan {
   if (normalizePath(from.path) === normalizePath(to.path)) return IDLE
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  ) return IDLE
 
   const fromType = resolveAnim(from, fallback)
   const toType = resolveAnim(to, fallback)
@@ -565,6 +599,7 @@ export function planTransition(
 
   const activeType = options?.tabs ? toType : nav === 'POP' ? fromType : toType
   const duration = animPresetRegistry.get(activeType)?.durationMs ?? readTypedDurationMs(activeType)
+  if (duration <= 0) return IDLE
 
   return { classNames, duration }
 }

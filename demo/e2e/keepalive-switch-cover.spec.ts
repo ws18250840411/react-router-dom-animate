@@ -1,7 +1,7 @@
 /**
  * keepAlive switch + cover/modal E2E 测试
  *
- * 验证 <AnimatedOutlet keepAlive mode="switch" transition="cover|modal" /> 在 tabs
+ * 验证 <KeepAlive mode="switch"><AnimatedOutlet transition="cover|modal" /></KeepAlive> 在 tabs
  * 场景下的动画方向行为：
  *
  * - 需配置 tabIndex 才能开启双向动画（forward/backward）

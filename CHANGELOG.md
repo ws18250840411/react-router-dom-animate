@@ -5,6 +5,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.2.0] — 2026-07-16
+
+### Added
+
+- Added `AnimatedRouteHandle` and route-level `keepAliveName` matching for `include` / `exclude`.
+- Added root-layout composition: a root stack cache can provide policy while a nested `AnimatedOutlet mode="switch"` overrides only its navigation mode.
+- Added dynamic-route, nested KeepAlive, multi-router cache-pool, zero-wait navigation, and scroll-reset regression tests.
+
+### Fixed
+
+- Kept route and cache bookkeeping synchronous during render so rapid navigation cannot commit a stale visible page.
+- Fixed stack scroll restoration when nested React Activity trees collapse scroll containers during navigation.
+- Fixed POP restoration when data-router loaders replace a history location key but preserve the logical page.
+- Fixed overlapping page/layout animation registrations so one instance cannot remove another instance's override.
+- Fixed global regular-expression filters leaking `lastIndex` state.
+- Fixed CSS `0ms` duration handling and disabled JS transition timers when reduced motion is requested.
+- Validated custom animation names and duration values.
+
+### Documentation and packaging
+
+- Updated Chinese and English root-layout usage, named cache filters, mode inheritance, and dependency descriptions.
+- Added MIT `LICENSE`, package repository metadata, public publish config, keywords, and verified major-version peer ranges.
+- Removed temporary debug-only E2E files.
+
+---
+
 ## [1.1.1] — 2026-07-10
 
 ### Documentation

@@ -179,7 +179,7 @@ function PageScope({ transition, children }: { transition: RouteAnimType; childr
   const { pathname } = useLocation()
   useLayoutEffect(() => {
     registerPageAnim(pathname, transition)
-    return () => unregisterPageAnim(pathname)
+    return () => unregisterPageAnim(pathname, transition)
   }, [pathname, transition])
   return children
 }
@@ -694,10 +694,13 @@ function routeCacheName(matches: UIMatch[]): string | undefined {
 /** Returns true if pathname or route cache name matches the given filter. */
 function matchFilter(pathname: string, filter: KeepAliveFilter, cacheName?: string): boolean {
   if (filter instanceof RegExp) {
-    filter.lastIndex = 0
-    if (filter.test(pathname)) return true
-    filter.lastIndex = 0
-    return cacheName !== undefined && filter.test(cacheName)
+    const test = (value: string): boolean => {
+      filter.lastIndex = 0
+      const matched = filter.test(value)
+      filter.lastIndex = 0
+      return matched
+    }
+    return test(pathname) || (cacheName !== undefined && test(cacheName))
   }
   if (typeof filter === 'function') return filter(pathname, cacheName)
   return filter.includes(pathname) || (cacheName !== undefined && filter.includes(cacheName))
@@ -1127,8 +1130,13 @@ export function useActivated(callback: () => void): void {
     if (!isActive) return
 
     let cancelled = false
-    cancelRef.current = () => { cancelled = true }
+    const cancel = () => { cancelled = true }
+    cancelRef.current = cancel
     Promise.resolve().then(() => { if (!cancelled) cbRef.current() })
+    return () => {
+      cancel()
+      if (cancelRef.current === cancel) cancelRef.current = null
+    }
   }, [isActive])
 }
 
@@ -1172,7 +1180,7 @@ function LayoutScopeRegistrar({ transition }: { transition: RouteAnimType }) {
   useLayoutEffect(() => {
     if (!scopeId || depth <= 0) return
     registerLayoutScope(scopeId, transition)
-    return () => unregisterLayoutScope(scopeId)
+    return () => unregisterLayoutScope(scopeId, transition)
   }, [scopeId, transition, depth])
 
   return null

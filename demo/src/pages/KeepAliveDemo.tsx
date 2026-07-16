@@ -201,7 +201,7 @@ export function KeepAliveLayout() {
         </div>
       </header>
 
-      {/* 实时显示 LRU 缓存状态 — max=2 时 3 个 Tab 可演示驱逐效果 */}
+      {/* 实时显示 LRU 缓存状态 */}
       <CachedBadge aliveRef={aliveRef} />
 
       <div style={{ display: 'flex', gap: 6, padding: '6px 12px', background: 'rgba(0,0,0,0.04)', fontSize: 12 }}>
@@ -253,16 +253,21 @@ export function KeepAliveLayout() {
 
 // ─── include / exclude demo ──────────────────────────────────────────────────
 
+const filterMountCounts = new Map<string, number>()
+
 /** Simple page that tracks mount count — re-mount means the cache was cleared. */
 function FilterPage({ name, testId }: { name: string; testId: string }) {
   const [count, setCount] = useState(0)
-  const mountCount = useRef(0)
-  mountCount.current += 1
+  const [mountCount] = useState(() => {
+    const next = (filterMountCounts.get(testId) ?? 0) + 1
+    filterMountCounts.set(testId, next)
+    return next
+  })
 
   return (
     <div className="page" data-testid={testId}>
       <h2>Page {name}</h2>
-      <p>Mount count: <span data-testid={`${testId}-mount`}>{mountCount.current}</span></p>
+      <p>Mount count: <span data-testid={`${testId}-mount`}>{mountCount}</span></p>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 12 }}>
         <button type="button" data-testid={`${testId}-dec`} onClick={() => setCount((c) => c - 1)}>−</button>
         <span data-testid={`${testId}-count`} style={{ minWidth: 40, textAlign: 'center' }}>{count}</span>

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * Tests for `<AnimatedOutlet keepAlive />` (stack / BackgroundPreserveRoot mode).
+ * Tests for `<KeepAlive><AnimatedOutlet /></KeepAlive>` stack mode.
  * Covers rapid navigation, PUSH→POP state preservation, deep stacks, and animation
  * class presence.
  */

@@ -176,6 +176,25 @@ describe('KeepAlive 专项压力测试', () => {
     expect(screen.getByTestId('only')).toBeTruthy()
   })
 
+  it('全局正则过滤器不会向调用方泄漏 lastIndex 状态', async () => {
+    const include = /CachedPage/g
+    function Layout() {
+      return <KeepAlive mode="switch" include={include}><AnimatedOutlet /></KeepAlive>
+    }
+    const router = createMemoryRouter([{
+      element: <Layout />,
+      children: [
+        { path: '/regex/a', handle: { keepAliveName: 'CachedPage' }, element: <div data-testid="regex-a">a</div> },
+        { path: '/regex/b', handle: { keepAliveName: 'CachedPage' }, element: <div data-testid="regex-b">b</div> },
+      ],
+    }], { initialEntries: ['/regex/a'] })
+
+    render(<RouterProvider router={router} />)
+    await screen.findByTestId('regex-a')
+    await act(async () => { await router.navigate('/regex/b', { replace: true }) })
+    expect(include.lastIndex).toBe(0)
+  })
+
   it('浏览器隐藏页面时产生的 scrollTop 归零事件不会覆盖返回快照', async () => {
     function ScrollPage() {
       return <div data-testid="scroll-box" style={{ height: 100, overflow: 'auto' }}><div style={{ height: 1000 }} /></div>

@@ -1,8 +1,7 @@
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const CSS = readFileSync(resolve(__dirname, '../anim.css'), 'utf8')
+const CSS = readFileSync(new URL('../anim.css', import.meta.url), 'utf8')
 
 describe('anim.css 时长与缓动', () => {
   it('默认时长 300ms，可通过 --fr-duration 覆盖', () => {
@@ -47,6 +46,11 @@ describe('anim.css 时长与缓动', () => {
 
   it('will-change 同时包含 transform 和 opacity（覆盖 fade/scale 动画）', () => {
     expect(CSS).toContain('will-change: transform, opacity')
+  })
+
+  it('显式 light class 可以覆盖系统暗色媒体查询', () => {
+    expect(CSS).toContain('.light .animated-outlet-page')
+    expect(CSS).toContain(':root:not(.light) .animated-outlet-page')
   })
 
   it('scale 和 modal-bg 动画使用 translate3d 触发 GPU 合成层', () => {

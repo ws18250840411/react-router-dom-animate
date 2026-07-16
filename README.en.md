@@ -1,7 +1,7 @@
 # react-router-dom-animate
 
 Smooth, production-ready page transitions and keep-alive caching for [react-router-dom](https://reactrouter.com/) v7+.  
-Powered by React 19's [`<Activity>`](https://react.dev/reference/react/Activity) — no third-party runtime, zero magic.
+Caching is powered by React 19.2's [`<Activity>`](https://react.dev/reference/react/Activity); transition orchestration uses `react-transition-group`.
 
 **Install**
 
@@ -9,9 +9,11 @@ Powered by React 19's [`<Activity>`](https://react.dev/reference/react/Activity)
 npm install react-router-dom-animate
 ```
 
-> Peer deps: `react` ≥19, `react-dom` ≥19, `react-router-dom` ≥7
+> Peer deps: React 19.2+, React DOM 19.2+, and React Router DOM 7
 
 > **Browser-only**: This library depends on React 19 `<Activity>` and DOM APIs and **does not support SSR or Server Components**. When using Remix or Next.js SSR, mark components that use `AnimatedOutlet` / `KeepAlive` with `'use client'` and ensure they render on the client side.
+
+> **Data Router required**: Use `createBrowserRouter`, `createHashRouter`, or `createMemoryRouter` with `<RouterProvider>`. Route handles, nested-layout identity, and named caches depend on React Router's `useMatches`; declarative `<BrowserRouter><Routes>` setups are not supported.
 
 ---
 
@@ -33,6 +35,41 @@ export function RootLayout() {
 ```
 
 Every child page now animates with an iOS-style `cover` slide. **No other config needed.**
+
+### Root layout with transitions and named caches
+
+For a typical mobile app, declare the cache policy once at the root:
+
+```tsx
+import { AnimatedOutlet, KeepAlive } from 'react-router-dom-animate'
+
+export function RootLayout() {
+  return (
+    <KeepAlive include={['HomeTab', 'DiscoverTab', 'ProfileTab']}>
+      <AnimatedOutlet />
+    </KeepAlive>
+  )
+}
+```
+
+Assign stable names to the routes that should be cached:
+
+```tsx
+import type { AnimatedRouteHandle } from 'react-router-dom-animate'
+
+export const handle = {
+  keepAliveName: 'HomeTab',
+  tabIndex: 0,
+} satisfies AnimatedRouteHandle
+```
+
+The root uses stack semantics. A nested tab layout can override only its navigation mode:
+
+```tsx
+<AnimatedOutlet mode="switch" />
+```
+
+Without an explicit `transition`, switch mode is instant and does not inherit the root cover animation.
 
 ---
 
@@ -163,6 +200,8 @@ When the user drills into a detail page and comes back, the list page is **exact
 
 On PUSH: the list page stays alive in the background.  
 On POP: the detail page exits with animation, the list page is instantly revealed.
+
+Stack mode does not use `max`. It retains only the active logical back stack, reuses same-level entries, and removes popped pages, DOM refs, scroll snapshots, and listeners after exit. Use switch-mode `include` / `max` when you need a bounded allow-list or LRU cache.
 
 ### Switch mode — tab caching
 
@@ -303,7 +342,7 @@ function ProfilePage() {
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `transition` | `string` | `'cover'` | Built-in: `cover` `slide` `fade` `scale` `modal` `none`; or a custom preset name |
-| `mode` | `'stack' \| 'switch'` | `'stack'` | Without keep-alive: `stack` (directional) or `switch` (flat). Ignored inside `<KeepAlive>` |
+| `mode` | `'stack' \| 'switch'` | `'stack'` | Inherits the nearest `<KeepAlive>` mode; an explicit value overrides the mode for this outlet |
 | `className` | `string` | — | Added to the `.animated-outlet-group` wrapper |
 
 ### `<KeepAlive>`
@@ -314,8 +353,8 @@ Wraps `<AnimatedOutlet>` to enable page caching.
 |------|------|---------|-------------|
 | `mode` | `'stack' \| 'switch'` | `'stack'` | `stack`: background preservation for drill-down; `switch`: LRU cache for tabs |
 | `max` | `number` | `30` | Max cached pages (LRU eviction). Switch mode only |
-| `include` | `string[] \| RegExp \| (path) => boolean` | — | Allow-list: only matching pages are cached. Switch mode only |
-| `exclude` | `string[] \| RegExp \| (path) => boolean` | — | Deny-list: matching pages are destroyed on exit. Switch mode only |
+| `include` | `readonly string[] \| RegExp \| (path, name) => boolean` | — | Allow-list matching pathname or route `keepAliveName`. Switch mode only |
+| `exclude` | `readonly string[] \| RegExp \| (path, name) => boolean` | — | Deny-list matching pathname or route `keepAliveName`. Switch mode only |
 | `aliveRef` | `RefObject<KeepAliveRef>` | — | Imperative cache control handle. Switch mode only |
 
 > **Note**: It is recommended to keep `mode` fixed. Switching `mode` at runtime (e.g. from `'switch'` to `'stack'`) triggers a Context rebuild and **clears all cached page state**.
@@ -345,6 +384,8 @@ import { setAnimDuration } from 'react-router-dom-animate'
 
 setAnimDuration('modal', 450)  // overrides CSS variables
 ```
+
+Durations must be finite and non-negative; `0` fully disables that animation. When the operating system requests reduced motion, transitions also resolve to 0ms so interaction is restored immediately.
 
 ### Custom animation presets
 

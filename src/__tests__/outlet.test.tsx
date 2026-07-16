@@ -777,7 +777,7 @@ describe('state.transition integration', () => {
   })
 })
 
-describe('AnimatedOutlet keepAlive mode="switch"', () => {
+describe('KeepAlive mode="switch"', () => {
   it('切换 Tab 后原 Tab 组件不被卸载（保持 mounted）', async () => {
     let mountCount = 0
 
@@ -959,6 +959,22 @@ describe('useActivated / useDeactivated hooks', () => {
     render(<RouterProvider router={router} />)
     await waitFor(() => expect(screen.getByTestId('page')).toBeTruthy())
     expect(calls.length).toBe(1)
+  })
+
+  it('useActivated 在微任务执行前卸载时不会调用回调', async () => {
+    const calls: string[] = []
+
+    function Page() {
+      useActivated(() => { calls.push('activated') })
+      return <div>page</div>
+    }
+
+    const router = createMemoryRouter([{ path: '/', element: <Page /> }], { initialEntries: ['/'] })
+    const view = render(<RouterProvider router={router} />)
+    view.unmount()
+    await Promise.resolve()
+
+    expect(calls).toEqual([])
   })
 
   it('useDeactivated 在 keepAlive tab 切走时触发', async () => {
