@@ -107,12 +107,26 @@ export const animPresetRegistry: AnimPresetRegistry = {
 
 export function registerAnimPreset(preset: AnimPreset): void {
   if (!preset.type.trim()) throw new TypeError('Animation preset type must not be empty.')
+  if (preset.tab && !isAnimated(preset.tab.forward)) {
+    throw new TypeError(
+      `Animation preset "${preset.type}" defines a tab field but tab.forward has no enterActive/exitActive class.`,
+    )
+  }
   animPresetRegistry.register({
     ...preset,
     durationMs: preset.durationMs === undefined
       ? undefined
       : normalizeDurationMs(preset.durationMs),
   })
+}
+
+/**
+ * Remove a previously registered animation preset.
+ * Useful in HMR (Hot Module Replacement) scenarios to avoid stale presets.
+ */
+export function unregisterAnimPreset(type: RouteAnimType): void {
+  presets.delete(type)
+  typedDurationCache.delete(type)
 }
 
 /**

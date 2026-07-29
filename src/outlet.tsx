@@ -11,6 +11,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type Context,
   type ReactElement,
   type ReactNode,
   type RefObject,
@@ -59,6 +60,24 @@ export interface AnimatedOutletProps {
   children?: ReactNode
 }
 
+// Infer the value type of UNSAFE_LocationContext (LocationContextObject is
+// not exported by react-router). Used to type locCtx without `as never`.
+type LocCtxValue = (typeof UNSAFE_LocationContext) extends Context<infer V> ? V : never
+
+/**
+ * Wraps `UNSAFE_LocationContext.Provider` to freeze the exiting page's location
+ * context during exit animations. If `UNSAFE_LocationContext` is removed in a
+ * future React Router version, replace this with a passthrough:
+ *
+ *   function LocationContextProvider({ children }) { return <>{children}</> }
+ *
+ * The only impact of a passthrough is that exit animations may briefly show the
+ * new route's content (visual glitch), not a hard crash.
+ */
+function LocationContextProvider({ value, children }: { value: LocCtxValue; children: ReactNode }) {
+  return <UNSAFE_LocationContext.Provider value={value}>{children}</UNSAFE_LocationContext.Provider>
+}
+
 const DepthContext = createContext(0)
 // Signals that this subtree is inside an alive=false (exiting) BackgroundPreserveRoot entry.
 // Nested BackgroundPreserveRoots must not update their outlet/locCtx while frozen.
@@ -66,7 +85,7 @@ const FrozenContext = createContext(false)
 
 interface KeepAliveContextValue {
   mode: OutletMode
-  max?: number
+  maxRef: RefObject<number | undefined>
   // include/exclude are stored as refs so the context value stays stable
   // even when the user passes inline functions that change on every render.
   includeRef: RefObject<KeepAliveFilter | undefined>
@@ -141,15 +160,17 @@ export function KeepAlive({ children, mode = 'stack', max, include, exclude, ali
   // every parent render and cause all AnimatedOutlet consumers to re-render).
   const includeRef = useRef<KeepAliveFilter | undefined>(include)
   const excludeRef = useRef<KeepAliveFilter | undefined>(exclude)
+  const maxRef = useRef<number | undefined>(max)
   includeRef.current = include
   excludeRef.current = exclude
+  maxRef.current = max
 
   const ctxValue = useMemo<KeepAliveContextValue>(
     // includeRef / excludeRef are stable (same object every render), so they
     // do not need to be in the dep array — only primitive/stable values do.
-    () => ({ mode, max, includeRef, excludeRef, aliveRef }),
+    () => ({ mode, maxRef, includeRef, excludeRef, aliveRef }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, max, aliveRef],
+    [mode, aliveRef],
   )
   return <KeepAliveContext.Provider value={ctxValue}>{children}</KeepAliveContext.Provider>
 }
@@ -171,7 +192,9 @@ function snap(location: Location, matches: UIMatch[]): RouteSnapshot {
     path: location.pathname,
     key: location.key,
     state: location.state,
-    matches: matches.map((m) => ({ ...m })),
+    // Store reference directly - React Router creates a new matches array
+    // per location change, so from/to never alias. Avoids O(n) copy per nav.
+    matches,
   }
 }
 
@@ -192,11 +215,11 @@ function PageScope({ transition, children }: { transition: RouteAnimType; childr
  * RRD version the exiting page will show the new route's content during exit
  * (visual glitch only, not a hard error). Pin RRD and verify after upgrading.
  */
-function FrozenOutlet({ outlet, locCtx }: { outlet: ReactNode; locCtx: unknown }) {
+function FrozenOutlet({ outlet, locCtx }: { outlet: ReactNode; locCtx: LocCtxValue }) {
   const [frozen] = useState(outlet)
   const [frozenCtx] = useState(locCtx)
   return (
-    <UNSAFE_LocationContext.Provider value={frozenCtx as never}>{frozen}</UNSAFE_LocationContext.Provider>
+    <LocationContextProvider value={frozenCtx}>{frozen}</LocationContextProvider>
   )
 }
 
@@ -210,7 +233,7 @@ function PageTransition({
   ...transitionProps
 }: {
   outlet: ReactNode
-  locCtx: unknown
+  locCtx: LocCtxValue
   classNames: ClassNames
   timeout: number | { enter: number; exit: number }
   live?: boolean
@@ -229,7 +252,7 @@ function PageTransition({
     >
       <div ref={nodeRef} className="animated-outlet-page">
         {live ? (
-          <UNSAFE_LocationContext.Provider value={locCtx as never}>{outlet}</UNSAFE_LocationContext.Provider>
+          <LocationContextProvider value={locCtx}>{outlet}</LocationContextProvider>
         ) : (
           <FrozenOutlet outlet={outlet} locCtx={locCtx} />
         )}
@@ -323,7 +346,7 @@ function BackgroundPreserveRoot({
     // unmount the subtree — only the outlet/locCtx/locKey are updated in-place.
     stableKey: string
     outlet: ReactNode
-    locCtx: unknown
+    locCtx: LocCtxValue
     nodeRef: RefObject<HTMLDivElement | null>
     alive: boolean
     activityMode: 'visible' | 'hidden'
@@ -446,14 +469,28 @@ function BackgroundPreserveRoot({
       if (!bgFrozenRef.current.get(topEntry.stableKey)) {
         const container = topEntry.nodeRef.current
         if (container) {
-          const scrolls: Array<[HTMLElement, number, number]> = []
-          const elements = [container, ...container.querySelectorAll<HTMLElement>('*')]
-          for (const element of elements) {
-            if (element.scrollTop !== 0 || element.scrollLeft !== 0) {
-              scrolls.push([element, element.scrollTop, element.scrollLeft])
+          const existing = bgScrollsRef.current.get(topEntry.stableKey)
+          if (existing && existing.length > 0) {
+            // Update existing scroll positions in O(tracked elements) instead of
+            // O(all DOM nodes). The scroll listener already tracks every element
+            // that has actually scrolled, so we only need to refresh their values.
+            for (let i = existing.length - 1; i >= 0; i--) {
+              const el = existing[i][0]
+              if (!el.isConnected) { existing.splice(i, 1); continue }
+              existing[i] = [el, el.scrollTop, el.scrollLeft]
             }
+          } else {
+            // First PUSH with no prior scroll events: full scan to discover all
+            // elements with non-zero scroll (e.g. programmatic scrollTop).
+            const scrolls: Array<[HTMLElement, number, number]> = []
+            const elements = [container, ...container.querySelectorAll<HTMLElement>('*')]
+            for (const element of elements) {
+              if (element.scrollTop !== 0 || element.scrollLeft !== 0) {
+                scrolls.push([element, element.scrollTop, element.scrollLeft])
+              }
+            }
+            if (scrolls.length > 0) bgScrollsRef.current.set(topEntry.stableKey, scrolls)
           }
-          if (scrolls.length > 0) bgScrollsRef.current.set(topEntry.stableKey, scrolls)
         }
       }
       bgNavigationFrozenRef.current.add(topEntry.stableKey)
@@ -662,16 +699,16 @@ function BackgroundPreserveRoot({
             >
               <div ref={entry.nodeRef} className="animated-outlet-page">
                 {entry.alive ? (
-                  <UNSAFE_LocationContext.Provider value={entry.locCtx as never}>
+                  <LocationContextProvider value={entry.locCtx}>
                     {entry.outlet}
-                  </UNSAFE_LocationContext.Provider>
+                  </LocationContextProvider>
                 ) : (
                   // Freeze outlet inside exiting entries so nested BackgroundPreserveRoots
                   // don't replace the exiting content with the new route's outlet.
                   <FrozenContext.Provider value={true}>
-                    <UNSAFE_LocationContext.Provider value={entry.locCtx as never}>
+                    <LocationContextProvider value={entry.locCtx}>
                       {entry.outlet}
-                    </UNSAFE_LocationContext.Provider>
+                    </LocationContextProvider>
                   </FrozenContext.Provider>
                 )}
               </div>
@@ -694,13 +731,9 @@ function routeCacheName(matches: UIMatch[]): string | undefined {
 /** Returns true if pathname or route cache name matches the given filter. */
 function matchFilter(pathname: string, filter: KeepAliveFilter, cacheName?: string): boolean {
   if (filter instanceof RegExp) {
-    const test = (value: string): boolean => {
-      filter.lastIndex = 0
-      const matched = filter.test(value)
-      filter.lastIndex = 0
-      return matched
-    }
-    return test(pathname) || (cacheName !== undefined && test(cacheName))
+    // Clone without the global flag to avoid lastIndex statefulness.
+    const re = new RegExp(filter.source, filter.flags.replace('g', ''))
+    return re.test(pathname) || (cacheName !== undefined && re.test(cacheName))
   }
   if (typeof filter === 'function') return filter(pathname, cacheName)
   return filter.includes(pathname) || (cacheName !== undefined && filter.includes(cacheName))
@@ -797,7 +830,7 @@ function KeepAliveRoot({
   const pageKey = location.pathname
   const cacheLimit = Number.isFinite(max) ? Math.max(1, Math.floor(max)) : 30
 
-  type PageSnap = { outlet: ReactNode; locCtx: unknown; cacheName?: string }
+  type PageSnap = { outlet: ReactNode; locCtx: LocCtxValue; cacheName?: string }
 
   const snapshotsRef = useRef(new Map<string, PageSnap>())
   // Tail is most-recently-used (LRU order).
@@ -1092,9 +1125,9 @@ function KeepAliveRoot({
             >
               <div ref={nodeRef} className={preEnterClass ? `animated-outlet-page ${preEnterClass}` : 'animated-outlet-page'}>
                 <PageActiveContext.Provider value={pageKey}>
-                  <UNSAFE_LocationContext.Provider value={pageSnap.locCtx as never}>
+                  <LocationContextProvider value={pageSnap.locCtx}>
                     {pageSnap.outlet}
-                  </UNSAFE_LocationContext.Provider>
+                  </LocationContextProvider>
                 </PageActiveContext.Provider>
               </div>
             </CSSTransition>
@@ -1153,16 +1186,27 @@ export function useDeactivated(callback: () => void): void {
   const cancelRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
+    // Cancel any pending microtask from a previous run (StrictMode double-invoke
+    // or rapid navigation). This prevents stale callbacks from firing.
     cancelRef.current?.()
     cancelRef.current = null
 
+    // Branch 1 - Outside keepAlive: behave like a normal useEffect cleanup.
+    // The callback fires on unmount.
     if (!isInKeepAlive) return () => { cbRef.current() }
 
+    // Branch 2 - Inside keepAlive, page just became inactive (isActive false->true
+    // transition re-ran this effect). The previous effect's cleanup (branch 3)
+    // scheduled a microtask, but we just cancelled it above. Fire synchronously
+    // so the callback is not lost.
     if (!isActive) {
       cbRef.current()
       return
     }
 
+    // Branch 3 - Inside keepAlive, page is active. Register a cleanup that
+    // fires when isActive changes true->false. Microtask deferral keeps it
+    // consistent with useActivated and StrictMode-safe.
     return () => {
       let cancelled = false
       cancelRef.current = () => { cancelled = true }
@@ -1279,7 +1323,7 @@ function AnimatedRoot({
         classNames: activePlan.classNames,
         timeout,
         onExited: commitSettled,
-      } as never),
+      } as Partial<typeof child.props>),
     [activePlan.classNames, timeout, commitSettled],
   )
 
@@ -1336,7 +1380,7 @@ export default function AnimatedOutlet({
         <DepthContext.Provider value={depth + 1}>
           {transition ? <LayoutScopeRegistrar transition={transition} /> : null}
           <KeepAliveRoot
-            max={keepAliveCtx?.max}
+            max={keepAliveCtx?.maxRef.current}
             include={keepAliveCtx?.includeRef.current}
             exclude={keepAliveCtx?.excludeRef.current}
             aliveRef={keepAliveCtx?.aliveRef}

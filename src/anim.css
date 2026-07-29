@@ -27,10 +27,6 @@
   height: 100%;
   overflow: hidden;
   background-color: var(--fr-page-bg, #f9fafb);
-  /* Pre-promote to GPU compositing layer so the first animation doesn't
-     incur a WebView cold-start cost (relevant on iOS WKWebView / Android WebView). */
-  -webkit-transform: translateZ(0);
-  transform: translateZ(0);
 }
 
 /* 转场叠层：对齐 fexd TransitionSwitch .animating + .animating 绝对定位 */
@@ -55,7 +51,6 @@
   }
 }
 
-
 /* prefers-reduced-motion: override */
 /* Respect the user's system-level "reduce motion" preference.
    When enabled, all page transitions become instant cuts instead of animations. */
@@ -73,6 +68,7 @@
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
   pointer-events: none;
+  transform: translateZ(0);
 }
 
 .animated-outlet-page.fr-enter-below {
@@ -80,9 +76,7 @@
 }
 
 .animated-outlet-page.fr-anim {
-  -webkit-animation-duration: var(--fr-duration);
   animation-duration: var(--fr-duration);
-  -webkit-animation-timing-function: var(--fr-ease);
   animation-timing-function: var(--fr-ease);
 }
 
@@ -90,7 +84,6 @@
 .animated-outlet-page.modal-bg-leave,
 .animated-outlet-page.slide-up-enter,
 .animated-outlet-page.slide-up-leave {
-  -webkit-animation-timing-function: var(--fr-ease-spring);
   animation-timing-function: var(--fr-ease-spring);
 }
 
@@ -103,19 +96,7 @@
 }
 
 .animated-outlet-page.slide-next-enter {
-  -webkit-animation-name: fr-slide-next-enter;
   animation-name: fr-slide-next-enter;
-}
-
-@-webkit-keyframes fr-slide-next-enter {
-  from {
-    -webkit-transform: translate3d(100%, 0, 0);
-    transform: translate3d(100%, 0, 0);
-  }
-  to {
-    -webkit-transform: translate3d(0, 0, 0);
-    transform: translate3d(0, 0, 0);
-  }
 }
 
 @keyframes fr-slide-next-enter {
@@ -128,19 +109,7 @@
 }
 
 .animated-outlet-page.slide-next-leave {
-  -webkit-animation-name: fr-slide-next-leave;
   animation-name: fr-slide-next-leave;
-}
-
-@-webkit-keyframes fr-slide-next-leave {
-  from {
-    -webkit-transform: translate3d(0, 0, 0);
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    -webkit-transform: translate3d(100%, 0, 0);
-    transform: translate3d(100%, 0, 0);
-  }
 }
 
 @keyframes fr-slide-next-leave {
@@ -153,21 +122,7 @@
 }
 
 .animated-outlet-page.slide-prev-leave-cover {
-  -webkit-animation-name: fr-slide-prev-leave-cover;
   animation-name: fr-slide-prev-leave-cover;
-}
-
-@-webkit-keyframes fr-slide-prev-leave-cover {
-  from {
-    opacity: 1;
-    -webkit-transform: translate3d(0, 0, 0) scale(1);
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  to {
-    opacity: 0;
-    -webkit-transform: translate3d(0, 0, -100px) scale(0.92);
-    transform: translate3d(0, 0, -100px) scale(0.92);
-  }
 }
 
 @keyframes fr-slide-prev-leave-cover {
@@ -182,21 +137,7 @@
 }
 
 .animated-outlet-page.slide-prev-enter-cover {
-  -webkit-animation-name: fr-slide-prev-enter-cover;
   animation-name: fr-slide-prev-enter-cover;
-}
-
-@-webkit-keyframes fr-slide-prev-enter-cover {
-  from {
-    opacity: 0;
-    -webkit-transform: translate3d(0, 0, -100px) scale(0.92);
-    transform: translate3d(0, 0, -100px) scale(0.92);
-  }
-  to {
-    opacity: 1;
-    -webkit-transform: translate3d(0, 0, 0) scale(1);
-    transform: translate3d(0, 0, 0) scale(1);
-  }
 }
 
 @keyframes fr-slide-prev-enter-cover {
@@ -211,19 +152,7 @@
 }
 
 .animated-outlet-page.slide-prev-leave-slide {
-  -webkit-animation-name: fr-slide-prev-leave-slide;
   animation-name: fr-slide-prev-leave-slide;
-}
-
-@-webkit-keyframes fr-slide-prev-leave-slide {
-  from {
-    -webkit-transform: translate3d(0, 0, 0);
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    -webkit-transform: translate3d(-33%, 0, 0);
-    transform: translate3d(-33%, 0, 0);
-  }
 }
 
 @keyframes fr-slide-prev-leave-slide {
@@ -236,19 +165,7 @@
 }
 
 .animated-outlet-page.slide-prev-enter-slide {
-  -webkit-animation-name: fr-slide-prev-enter-slide;
   animation-name: fr-slide-prev-enter-slide;
-}
-
-@-webkit-keyframes fr-slide-prev-enter-slide {
-  from {
-    -webkit-transform: translate3d(-33%, 0, 0);
-    transform: translate3d(-33%, 0, 0);
-  }
-  to {
-    -webkit-transform: translate3d(0, 0, 0);
-    transform: translate3d(0, 0, 0);
-  }
 }
 
 @keyframes fr-slide-prev-enter-slide {
@@ -269,18 +186,15 @@
  * position 0 before the slide animation begins.
  */
 .animated-outlet-page.fr-tab-pre-enter-right {
-  -webkit-transform: translate3d(100%, 0, 0);
   transform: translate3d(100%, 0, 0);
 }
 
 .animated-outlet-page.fr-tab-pre-enter-left {
-  -webkit-transform: translate3d(-100%, 0, 0);
   transform: translate3d(-100%, 0, 0);
 }
 
 /* Pre-enter position for modal (slide-up) in keepAlive switch mode */
 .animated-outlet-page.fr-tab-pre-enter-bottom {
-  -webkit-transform: translate3d(0, 100%, 0);
   transform: translate3d(0, 100%, 0);
 }
 
@@ -289,7 +203,6 @@
    This prevents the one-frame flash at full-size before the emerge animation begins. */
 .animated-outlet-page.fr-tab-pre-enter-below {
   opacity: 0;
-  -webkit-transform: translate3d(0, 0, -100px) scale(0.92);
   transform: translate3d(0, 0, -100px) scale(0.92);
 }
 
@@ -298,7 +211,6 @@
    and scaled-down instead of flashing at full size before the animation begins. */
 .animated-outlet-page.fr-tab-pre-enter-scale {
   opacity: 0;
-  -webkit-transform: translate3d(0, 0, 0) scale(0.92);
   transform: translate3d(0, 0, 0) scale(0.92);
 }
 
@@ -311,45 +223,26 @@
 
 .animated-outlet-page.tabs-slide-enter-forward {
   z-index: 2;
-  -webkit-animation-name: fr-tabs-slide-enter-forward;
   animation-name: fr-tabs-slide-enter-forward;
-  -webkit-animation-timing-function: var(--fr-ease-tab);
   animation-timing-function: var(--fr-ease-tab);
 }
 
 .animated-outlet-page.tabs-slide-leave-forward {
   z-index: 1;
-  -webkit-animation-name: fr-tabs-slide-leave-forward;
   animation-name: fr-tabs-slide-leave-forward;
-  -webkit-animation-timing-function: var(--fr-ease-tab);
   animation-timing-function: var(--fr-ease-tab);
 }
 
 .animated-outlet-page.tabs-slide-enter-back {
   z-index: 2;
-  -webkit-animation-name: fr-tabs-slide-enter-back;
   animation-name: fr-tabs-slide-enter-back;
-  -webkit-animation-timing-function: var(--fr-ease-tab);
   animation-timing-function: var(--fr-ease-tab);
 }
 
 .animated-outlet-page.tabs-slide-leave-back {
   z-index: 1;
-  -webkit-animation-name: fr-tabs-slide-leave-back;
   animation-name: fr-tabs-slide-leave-back;
-  -webkit-animation-timing-function: var(--fr-ease-tab);
   animation-timing-function: var(--fr-ease-tab);
-}
-
-@-webkit-keyframes fr-tabs-slide-enter-forward {
-  from {
-    -webkit-transform: translate3d(100%, 0, 0);
-    transform: translate3d(100%, 0, 0);
-  }
-  to {
-    -webkit-transform: translate3d(0, 0, 0);
-    transform: translate3d(0, 0, 0);
-  }
 }
 
 @keyframes fr-tabs-slide-enter-forward {
@@ -358,17 +251,6 @@
   }
   to {
     transform: translate3d(0, 0, 0);
-  }
-}
-
-@-webkit-keyframes fr-tabs-slide-leave-forward {
-  from {
-    -webkit-transform: translate3d(0, 0, 0);
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    -webkit-transform: translate3d(-100%, 0, 0);
-    transform: translate3d(-100%, 0, 0);
   }
 }
 
@@ -381,34 +263,12 @@
   }
 }
 
-@-webkit-keyframes fr-tabs-slide-enter-back {
-  from {
-    -webkit-transform: translate3d(-100%, 0, 0);
-    transform: translate3d(-100%, 0, 0);
-  }
-  to {
-    -webkit-transform: translate3d(0, 0, 0);
-    transform: translate3d(0, 0, 0);
-  }
-}
-
 @keyframes fr-tabs-slide-enter-back {
   from {
     transform: translate3d(-100%, 0, 0);
   }
   to {
     transform: translate3d(0, 0, 0);
-  }
-}
-
-@-webkit-keyframes fr-tabs-slide-leave-back {
-  from {
-    -webkit-transform: translate3d(0, 0, 0);
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    -webkit-transform: translate3d(100%, 0, 0);
-    transform: translate3d(100%, 0, 0);
   }
 }
 
@@ -422,17 +282,7 @@
 }
 
 .animated-outlet-page.fade-enter {
-  -webkit-animation-name: fr-fade-enter;
   animation-name: fr-fade-enter;
-}
-
-@-webkit-keyframes fr-fade-enter {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 @keyframes fr-fade-enter {
@@ -445,17 +295,7 @@
 }
 
 .animated-outlet-page.fade-leave {
-  -webkit-animation-name: fr-fade-leave;
   animation-name: fr-fade-leave;
-}
-
-@-webkit-keyframes fr-fade-leave {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
 }
 
 @keyframes fr-fade-leave {
@@ -468,21 +308,7 @@
 }
 
 .animated-outlet-page.scale-enter {
-  -webkit-animation-name: fr-scale-enter;
   animation-name: fr-scale-enter;
-}
-
-@-webkit-keyframes fr-scale-enter {
-  from {
-    opacity: 0;
-    -webkit-transform: translate3d(0, 0, 0) scale(0.92);
-    transform: translate3d(0, 0, 0) scale(0.92);
-  }
-  to {
-    opacity: 1;
-    -webkit-transform: translate3d(0, 0, 0) scale(1);
-    transform: translate3d(0, 0, 0) scale(1);
-  }
 }
 
 @keyframes fr-scale-enter {
@@ -497,21 +323,7 @@
 }
 
 .animated-outlet-page.scale-leave {
-  -webkit-animation-name: fr-scale-leave;
   animation-name: fr-scale-leave;
-}
-
-@-webkit-keyframes fr-scale-leave {
-  from {
-    opacity: 1;
-    -webkit-transform: translate3d(0, 0, 0) scale(1);
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  to {
-    opacity: 0;
-    -webkit-transform: translate3d(0, 0, 0) scale(0.92);
-    transform: translate3d(0, 0, 0) scale(0.92);
-  }
 }
 
 @keyframes fr-scale-leave {
@@ -539,19 +351,7 @@
 }
 
 .animated-outlet-page.slide-up-enter {
-  -webkit-animation-name: fr-slide-up-enter;
   animation-name: fr-slide-up-enter;
-}
-
-@-webkit-keyframes fr-slide-up-enter {
-  from {
-    -webkit-transform: translate3d(0, 100%, 0);
-    transform: translate3d(0, 100%, 0);
-  }
-  to {
-    -webkit-transform: translate3d(0, 0, 0);
-    transform: translate3d(0, 0, 0);
-  }
 }
 
 @keyframes fr-slide-up-enter {
@@ -564,19 +364,7 @@
 }
 
 .animated-outlet-page.slide-up-leave {
-  -webkit-animation-name: fr-slide-up-leave;
   animation-name: fr-slide-up-leave;
-}
-
-@-webkit-keyframes fr-slide-up-leave {
-  from {
-    -webkit-transform: translate3d(0, 0, 0);
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    -webkit-transform: translate3d(0, 100%, 0);
-    transform: translate3d(0, 100%, 0);
-  }
 }
 
 @keyframes fr-slide-up-leave {
@@ -589,19 +377,7 @@
 }
 
 .animated-outlet-page.modal-bg-leave {
-  -webkit-animation-name: fr-modal-bg-leave;
   animation-name: fr-modal-bg-leave;
-}
-
-@-webkit-keyframes fr-modal-bg-leave {
-  from {
-    -webkit-transform: translate3d(0, 0, 0) scale(1);
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  to {
-    -webkit-transform: translate3d(0, 0, 0) scale(0.92);
-    transform: translate3d(0, 0, 0) scale(0.92);
-  }
 }
 
 @keyframes fr-modal-bg-leave {

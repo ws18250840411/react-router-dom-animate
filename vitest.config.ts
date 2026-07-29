@@ -2,12 +2,9 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
+    // Default to node; test files that need DOM use the
+    // `@vitest-environment jsdom` inline pragma at the top of the file.
     environment: 'node',
-    exclude: ['**/node_modules/**', '**/dist/**', 'demo/**'],
-    environmentMatchGlobs: [
-      ['src/__tests__/outlet.test.tsx', 'jsdom'],
-      ['src/__tests__/layout-route.test.tsx', 'jsdom'],
-      ['src/__tests__/keepalive-stack.test.tsx', 'jsdom'],
-    ],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/demo/**'],
   },
 })
