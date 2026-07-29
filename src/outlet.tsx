@@ -402,6 +402,11 @@ function BackgroundPreserveRoot({
     if (scrollRestoreFrameRef.current !== null) {
       window.cancelAnimationFrame(scrollRestoreFrameRef.current)
     }
+    // Detach all scroll/touch handlers on unmount to prevent stale listeners
+    // if DOM nodes are reused by React reconciliation.
+    for (const key of [...bgScrollHandlersRef.current.keys()]) {
+      detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgInteractionFrozenRef.current, bgNavigationFrozenRef.current, key)
+    }
   }, [])
 
   const locKey = location.key
@@ -593,7 +598,7 @@ function BackgroundPreserveRoot({
       }
 
       container.addEventListener('scroll', handler, { capture: true, passive: true })
-      container.addEventListener('click', clickHandler, { capture: true, passive: true })
+      container.addEventListener('click', clickHandler, { capture: true })
       container.addEventListener('touchstart', touchStartHandler, { capture: true, passive: true })
       container.addEventListener('touchend', touchEndHandler, { capture: true, passive: true })
       container.addEventListener('touchcancel', touchEndHandler, { capture: true, passive: true })
@@ -662,7 +667,7 @@ function BackgroundPreserveRoot({
         const skipEnter = isTop && entry.skipEnter === true
         // Only the top two entries animate; deeper entries stay hidden via Activity.
         const entryTimeout = skipEnter ? 0 : (isTop || isSecond ? timeout : 0)
-        const entryClassNames = skipEnter ? {} : (isTop || isSecond ? activePlan.classNames : {})
+        const entryClassNames = skipEnter ? IDLE.classNames : (isTop || isSecond ? activePlan.classNames : IDLE.classNames)
         // First paint with in={false}; useLayoutEffect then flips to in={true}.
         const inProp = isTop && !pendingEnterRef.current.has(entry.stableKey)
         return (
@@ -1030,6 +1035,13 @@ function KeepAliveRoot({
     })
     if (changed) forceRender()
   })
+
+  // Detach all scroll handlers on unmount to prevent stale listeners.
+  useEffect(() => () => {
+    for (const key of [...scrollHandlersRef.current.keys()]) {
+      detachScrollHandler(scrollHandlersRef.current, key)
+    }
+  }, [])
 
   useLayoutEffect(() => {
     if (!aliveRef) return
