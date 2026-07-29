@@ -1,6 +1,6 @@
 {
   "name": "react-router-dom-animate",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Route transitions and KeepAlive caching for React Router",
   "type": "module",
   "main": "./dist/index.cjs",

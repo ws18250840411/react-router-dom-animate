@@ -5,6 +5,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.2.1] — 2026-07-29
+
+### Added
+
+- Added `unregisterAnimPreset(type)` for HMR and dev workflows that need to remove a previously registered preset.
+
+### Fixed
+
+- Detached scroll and touch listeners when `BackgroundPreserveRoot` / `KeepAliveRoot` unmount, preventing stale handlers if React reuses DOM nodes during reconciliation.
+- Removed invalid `passive: true` from the click handler (`click` does not support passive options).
+- Fixed `entryClassNames` typing when `skipEnter` is true by returning `IDLE.classNames` instead of an empty object.
+- `registerAnimPreset` now validates that `tab.forward` defines both `enterActive` and `exitActive` when a `tab` field is present.
+
+### Performance
+
+- Moved `translateZ(0)` from `.animated-outlet-page` to `.fr-animating` so switch-mode caches no longer create a permanent GPU compositing layer per cached page.
+- Replaced PUSH-time `querySelectorAll('*')` scroll scanning with a reusable `bgScrollsRef` cache for long list pages.
+- Stored `KeepAlive` `max` in a ref (same pattern as `include` / `exclude`) so context value stays stable when `max` is derived from state.
+- Removed legacy `-webkit-` animation prefixes; CSS bundle reduced by ~36%.
+
+### Documentation
+
+- Rewrote Chinese and English README for faster onboarding (~495 → ~150 lines): merged overlapping Tab/KeepAlive sections, dropped redundant step-by-step tutorials, kept three core patterns and a compact API reference.
+- Documented `unregisterAnimPreset` in custom-preset sections.
+- Clarified that `include`, `exclude`, and `max` are all stored in refs internally for stable Context.
+
+---
+
 ## [1.2.0] — 2026-07-16
 
 ### Added
