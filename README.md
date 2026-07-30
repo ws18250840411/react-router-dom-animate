@@ -110,17 +110,26 @@ export const handle = { keepAliveName: 'HomeTab', tabIndex: 0 }
 | `transition` | `'cover'` | 内置或自定义预设名 |
 | `mode` | `'stack'` | `stack` 有方向感；`switch` 平级切换。在 `<KeepAlive>` 内继承其 mode |
 | `className` | — | 外层容器 class |
+| `onTransitionStart` | - | 转场开始时触发（含即时切换）。可用于显示 loading、埋点 |
+| `onTransitionEnd` | - | 转场完成时触发（settled location 已提交）。与 `onTransitionStart` 配对 |
 
 ### `<KeepAlive>`
 
 | Prop | 默认 | 说明 |
 |------|------|------|
 | `mode` | `'stack'` | `stack` 列表→详情；`switch` Tab 缓存 |
-| `max` | `30` | LRU 上限（仅 switch） |
+| `max` | `30`(switch) / `10`(stack) | switch: LRU 上限；stack: 返回栈深度上限，超出时从底部驱逐最旧页面 |
 | `include` / `exclude` | — | 白/黑名单，匹配 pathname 或 `keepAliveName`（仅 switch） |
-| `aliveRef` | — | 命令式清除缓存（仅 switch） |
+| `aliveRef` | - | 命令式控制缓存（两种模式均支持） |
 
-`aliveRef` 方法：`remove(pathname)` · `removeAll()` · `getCached()`
+`aliveRef` 方法（stack 和 switch 通用）：
+
+```ts
+aliveRef.current?.remove('/list')    // 移除指定 pathname 的缓存页面
+aliveRef.current?.removeAll()        // 移除所有非活跃缓存页面
+aliveRef.current?.getCached()        // 获取当前缓存的 pathname 列表
+```
+
 
 > 运行时切换 `mode` 会清空所有缓存。`include` / `exclude` / `max` 内部用 ref 存储，内联函数不会触发 Context 重建。
 
@@ -155,6 +164,48 @@ unregisterAnimPreset('my-flip')  // HMR 场景移除
 ```
 
 系统启用"减少动态效果"时自动 0ms 转场。
+
+### CSS 变量速查
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `--fr-duration` | `300ms` | 全局动画时长 |
+| `--fr-duration-{type}` | - | 按类型覆盖，如 `--fr-duration-modal: 450ms` |
+| `--fr-ease` | `cubic-bezier(.25,.46,.45,.94)` | 默认缓动 |
+| `--fr-ease-spring` | `cubic-bezier(.32,.72,0,1)` | 弹性缓动（modal/slide-up） |
+| `--fr-ease-tab` | `cubic-bezier(.4,0,.2,1)` | Tab 切换缓动 |
+| `--fr-page-bg` | `#f9fafb` | 页面背景色（浅色） |
+| `--fr-page-bg-dark` | `#030712` | 页面背景色（深色） |
+| `--fr-modal-overlay` | `rgba(15,23,42,.55)` | modal 遮罩色 |
+| `--fr-pending-bg` | `rgba(255,255,255,.4)` | loader loading 时的 overlay 色 |
+
+### 路由 Loading 状态
+
+当 React Router 7 的路由 loader 正在加载时，容器自动添加 `data-pending` 属性，CSS 显示半透明 overlay 防止白屏闪烁：
+
+```css
+/* 自定义 overlay 效果 */
+.animated-outlet-group[data-pending]::after {
+  background: url('/spinner.svg') center / 24px no-repeat;
+}
+```
+
+也可通过 `--fr-pending-bg` 变量只改颜色：
+
+```css
+:root { --fr-pending-bg: rgba(0, 0, 0, 0.3); }
+```
+
+### 动画事件回调
+
+```tsx
+<AnimatedOutlet
+  onTransitionStart={() => NProgress.start()}
+  onTransitionEnd={() => NProgress.done()}
+/>
+```
+
+> 即时切换（`duration=0` 或 `prefers-reduced-motion`）也会触发回调，`start` 和 `end` 之间可能无延迟。
 
 ---
 

@@ -110,17 +110,26 @@ Stack keep-alive can also be enabled via route handle without wrapping: `handle:
 | `transition` | `'cover'` | Built-in or custom preset name |
 | `mode` | `'stack'` | `stack` = directional; `switch` = flat. Inherits `<KeepAlive>` mode when wrapped |
 | `className` | — | Wrapper class |
+| `onTransitionStart` | - | Fires when a transition starts (including instant). Use for loading, analytics |
+| `onTransitionEnd` | - | Fires when transition completes (settled location committed) |
 
 ### `<KeepAlive>`
 
 | Prop | Default | Description |
 |------|---------|-------------|
 | `mode` | `'stack'` | `stack` for drill-down; `switch` for tab cache |
-| `max` | `30` | LRU limit (switch only) |
+| `max` | `30`(switch) / `10`(stack) | switch: LRU limit; stack: back-stack depth limit, evicts oldest from bottom |
 | `include` / `exclude` | — | Allow/deny list by pathname or `keepAliveName` (switch only) |
-| `aliveRef` | — | Imperative cache control (switch only) |
+| `aliveRef` | - | Imperative cache control (both modes) |
 
-`aliveRef` methods: `remove(pathname)` · `removeAll()` · `getCached()`
+`aliveRef` methods (both stack and switch):
+
+```ts
+aliveRef.current?.remove('/list')    // remove a cached page by pathname
+aliveRef.current?.removeAll()        // remove all inactive cached pages
+aliveRef.current?.getCached()        // get list of cached pathnames
+```
+
 
 > Switching `mode` at runtime clears all cached state. `include`, `exclude`, and `max` are stored in refs — inline functions won't rebuild Context.
 
@@ -155,6 +164,42 @@ unregisterAnimPreset('my-flip')  // for HMR
 ```
 
 Reduced-motion OS setting automatically resolves to 0ms transitions.
+
+### CSS Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `--fr-duration` | `300ms` | Global animation duration |
+| `--fr-duration-{type}` | - | Per-type override, e.g. `--fr-duration-modal: 450ms` |
+| `--fr-ease` | `cubic-bezier(.25,.46,.45,.94)` | Default easing |
+| `--fr-ease-spring` | `cubic-bezier(.32,.72,0,1)` | Spring easing (modal/slide-up) |
+| `--fr-ease-tab` | `cubic-bezier(.4,0,.2,1)` | Tab switch easing |
+| `--fr-page-bg` | `#f9fafb` | Page background (light) |
+| `--fr-page-bg-dark` | `#030712` | Page background (dark) |
+| `--fr-modal-overlay` | `rgba(15,23,42,.55)` | Modal overlay color |
+| `--fr-pending-bg` | `rgba(255,255,255,.4)` | Loader pending overlay color |
+
+### Route Loading State
+
+When a React Router 7 loader is pending, the container gets a `data-pending` attribute with a subtle overlay:
+
+```css
+/* Custom overlay */
+.animated-outlet-group[data-pending]::after {
+  background: url('/spinner.svg') center / 24px no-repeat;
+}
+```
+
+### Transition Callbacks
+
+```tsx
+<AnimatedOutlet
+  onTransitionStart={() => NProgress.start()}
+  onTransitionEnd={() => NProgress.done()}
+/>
+```
+
+> Instant transitions (duration=0 or reduced-motion) also fire callbacks.
 
 ---
 
