@@ -21,6 +21,7 @@ import {
   useLocation,
   useMatches,
   useNavigationType,
+  useNavigation,
   useOutlet,
   type Location,
   type UIMatch,
@@ -58,6 +59,17 @@ export interface AnimatedOutletProps {
   mode?: OutletMode
   className?: string
   children?: ReactNode
+  /**
+   * Fires when a route transition starts (before the animation plays).
+   * Also fires for instant transitions (duration=0). Use this to show
+   * loading indicators, lock interaction, or trigger analytics.
+   */
+  onTransitionStart?: () => void
+  /**
+   * Fires when a route transition completes (after the animation finishes
+   * and the settled location is committed). Paired with `onTransitionStart`.
+   */
+  onTransitionEnd?: () => void
 }
 
 // Infer the value type of UNSAFE_LocationContext (LocationContextObject is
@@ -283,10 +295,18 @@ function extractPreEnterClass(enterClass: string | undefined): string {
 function BackgroundPreserveRoot({
   depth,
   layoutTransition,
+  max,
+  onTransitionStart,
+  onTransitionEnd,
+  aliveRef,
   className,
 }: {
   depth: number
   layoutTransition?: RouteAnimType
+  max?: number
+  onTransitionStart?: () => void
+  onTransitionEnd?: () => void
+  aliveRef?: RefObject<KeepAliveRef | null | undefined>
   className?: string
 }) {
   const matches = useMatches()
@@ -295,8 +315,14 @@ function BackgroundPreserveRoot({
   const outlet = useOutlet()
   const locCtx = useContext(UNSAFE_LocationContext)
   const isFrozen = useContext(FrozenContext)
+  const isPending = useNavigation().state !== 'idle'
 
+  const onTSRef = useRef(onTransitionStart)
+  onTSRef.current = onTransitionStart
+  const onTERef = useRef(onTransitionEnd)
+  onTERef.current = onTransitionEnd
   const fallback = layoutTransition ?? 'cover'
+  const stackDepthLimit = max !== undefined && Number.isFinite(max) ? Math.max(1, Math.floor(max)) : 10
   const pageKey = pageTransitionKey('stack', matches, location.pathname, location.key)
 
   const fromSnapRef = useRef<RouteSnapshot>(snap(location, matches))
@@ -316,7 +342,10 @@ function BackgroundPreserveRoot({
   const settledKeyRef = useRef(settledLocation.key)
   settledKeyRef.current = settledLocation.key
   const commitSettled = useCallback(() => {
-    if (settledKeyRef.current !== locationRef.current.key) setSettledLocation(locationRef.current)
+    if (settledKeyRef.current !== locationRef.current.key) {
+      setSettledLocation(locationRef.current)
+      onTERef.current?.()
+    }
   }, [])
 
   const activePlan: TransitionPlan = useMemo(() => {
@@ -331,6 +360,7 @@ function BackgroundPreserveRoot({
 
   useLayoutEffect(() => {
     if (settledLocation.key === location.key) return
+    onTSRef.current?.()
     if (activePlan.duration <= 0) {
       commitSettled()
       return
@@ -341,6 +371,7 @@ function BackgroundPreserveRoot({
 
   type StackEntry = {
     locKey: string
+    pathname: string
     // stableKey is derived from layoutRouteId (same for home/profile, different for article).
     // Used as the Activity React key so same-level navigations (tabs, REPLACE) don't
     // unmount the subtree — only the outlet/locCtx/locKey are updated in-place.
@@ -396,6 +427,40 @@ function BackgroundPreserveRoot({
   // display:none; that reset must never overwrite the pre-navigation snapshot.
   const bgNavigationFrozenRef = useRef(new Set<string>())
   const pendingScrollRestoreRef = useRef(new Set<string>())
+  // Imperative cache control for stack mode (aliveRef).
+  useEffect(() => {
+    if (!aliveRef) return
+    aliveRef.current = {
+      remove(pathname: string) {
+        if (pathname === location.pathname) return
+        const idx = stackRef.current.findIndex(e => e.pathname === pathname && e.alive)
+        if (idx < 0) return
+        const entry = stackRef.current[idx]
+        detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgInteractionFrozenRef.current, bgNavigationFrozenRef.current, entry.stableKey)
+        nodeRefsCache.current.delete(entry.stableKey)
+        bgScrollsRef.current.delete(entry.stableKey)
+        stackRef.current = stackRef.current.filter(e => e.stableKey !== entry.stableKey)
+        forceRender()
+      },
+      removeAll() {
+        const active = location.pathname
+        for (const e of [...stackRef.current]) {
+          if (e.pathname !== active && e.alive) {
+            detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgInteractionFrozenRef.current, bgNavigationFrozenRef.current, e.stableKey)
+            nodeRefsCache.current.delete(e.stableKey)
+            bgScrollsRef.current.delete(e.stableKey)
+          }
+        }
+        stackRef.current = stackRef.current.filter(e => e.pathname === active)
+        forceRender()
+      },
+      getCached() {
+        return stackRef.current.filter(e => e.alive).map(e => e.pathname)
+      },
+    }
+    return () => { aliveRef.current = undefined }
+  }, [aliveRef, location.pathname])
+
   const scrollRestoreFrameRef = useRef<number | null>(null)
 
   useEffect(() => () => {
@@ -419,7 +484,7 @@ function BackgroundPreserveRoot({
 
   if (!topEntry) {
     stackRef.current = [
-      { locKey, stableKey, outlet, locCtx, nodeRef: getNodeRef(stableKey), alive: true, activityMode: 'visible' },
+      { locKey, pathname: location.pathname, stableKey, outlet, locCtx, nodeRef: getNodeRef(stableKey), alive: true, activityMode: 'visible' },
     ]
   } else if (topEntry.locKey !== locKey) {
     if (navType === 'POP') {
@@ -457,7 +522,7 @@ function BackgroundPreserveRoot({
           bgScrollsRef.current.delete(e.stableKey)
         }
         stackRef.current = [
-          { locKey, stableKey, outlet, locCtx, nodeRef: getNodeRef(stableKey), alive: true, activityMode: 'visible' },
+          { locKey, pathname: location.pathname, stableKey, outlet, locCtx, nodeRef: getNodeRef(stableKey), alive: true, activityMode: 'visible' },
         ]
       }
     } else if (topEntry.stableKey === stableKey) {
@@ -508,10 +573,25 @@ function BackgroundPreserveRoot({
       // Filter out zombie entries (alive=false) with the same stableKey. These are left
       // behind after a POP and would create duplicate React keys if not removed before PUSH.
       const deduped = updatedStack.filter(e => !(e.stableKey === stableKey && !e.alive))
-      stackRef.current = [
+      let newStack: StackEntry[] = [
         ...deduped,
-        { locKey, stableKey, outlet, locCtx, nodeRef: getNodeRef(stableKey), alive: true, activityMode: 'visible' },
+        { locKey, pathname: location.pathname, stableKey, outlet, locCtx, nodeRef: getNodeRef(stableKey), alive: true, activityMode: 'visible' },
       ]
+      // Evict deepest entries when the stack exceeds the depth limit.
+      // Unlike switch-mode LRU (which evicts least-recently-used), stack mode
+      // evicts from the bottom (oldest page) since the stack is LIFO and the
+      // bottom entry is the least likely to be returned to.
+      if (newStack.length > stackDepthLimit) {
+        const evicted = newStack.slice(0, newStack.length - stackDepthLimit)
+        for (const e of evicted) {
+          if (!e.alive) continue // already being removed
+          detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgInteractionFrozenRef.current, bgNavigationFrozenRef.current, e.stableKey)
+          nodeRefsCache.current.delete(e.stableKey)
+          bgScrollsRef.current.delete(e.stableKey)
+        }
+        newStack = newStack.slice(newStack.length - stackDepthLimit)
+      }
+      stackRef.current = newStack
       // Two-render trick: first paint with in={false} so CSSTransition starts in
       // "exited" state; useLayoutEffect then flips to in={true} to play the enter animation.
       pendingEnterRef.current.add(stableKey)
@@ -525,7 +605,7 @@ function BackgroundPreserveRoot({
       }
       stackRef.current = [
         ...stackRef.current.slice(0, -1),
-        { locKey, stableKey, outlet, locCtx, nodeRef: getNodeRef(stableKey), alive: true, activityMode: 'visible' },
+        { locKey, pathname: location.pathname, stableKey, outlet, locCtx, nodeRef: getNodeRef(stableKey), alive: true, activityMode: 'visible' },
       ]
       // Same two-render trick as PUSH so the entering page's CSSTransition starts in
       // "exited" state and the enter animation plays correctly.
@@ -656,7 +736,7 @@ function BackgroundPreserveRoot({
   })
 
   return (
-    <div className={className ? `animated-outlet-group ${className}` : 'animated-outlet-group'}>
+    <div className={className ? `animated-outlet-group ${className}` : 'animated-outlet-group'} data-pending={isPending || undefined}>
       {renderStack.map((entry) => {
         const logicalIdx = logicalStack.indexOf(entry)
         const isTop = logicalIdx === logicalStack.length - 1
@@ -818,6 +898,8 @@ function KeepAliveRoot({
   exclude,
   aliveRef,
   layoutTransition,
+  onTransitionStart,
+  onTransitionEnd,
   className,
 }: {
   max?: number
@@ -825,6 +907,8 @@ function KeepAliveRoot({
   exclude?: KeepAliveFilter
   aliveRef?: RefObject<KeepAliveRef | null | undefined>
   layoutTransition?: RouteAnimType
+  onTransitionStart?: () => void
+  onTransitionEnd?: () => void
   className?: string
 }) {
   const location = useLocation()
@@ -832,6 +916,7 @@ function KeepAliveRoot({
   const matches = useMatches()
   const outlet = useOutlet()
   const locCtx = useContext(UNSAFE_LocationContext)
+  const isPending = useNavigation().state !== 'idle'
   const pageKey = location.pathname
   const cacheLimit = Number.isFinite(max) ? Math.max(1, Math.floor(max)) : 30
 
@@ -877,8 +962,15 @@ function KeepAliveRoot({
   locationRef.current = location
   const settledKeyRef = useRef(settledLocation.key)
   settledKeyRef.current = settledLocation.key
+  const onTSRef = useRef(onTransitionStart)
+  onTSRef.current = onTransitionStart
+  const onTERef = useRef(onTransitionEnd)
+  onTERef.current = onTransitionEnd
   const commitSettled = useCallback(() => {
-    if (settledKeyRef.current !== locationRef.current.key) setSettledLocation(locationRef.current)
+    if (settledKeyRef.current !== locationRef.current.key) {
+      setSettledLocation(locationRef.current)
+      onTERef.current?.()
+    }
   }, [])
 
   const fallback = layoutTransition ?? 'none'
@@ -896,6 +988,7 @@ function KeepAliveRoot({
 
   useLayoutEffect(() => {
     if (settledLocation.key === location.key) return
+    onTSRef.current?.()
     if (activePlan.duration <= 0) {
       // Always sync settledLocation even when same pathname (different key).
       // Skipping this caused fromSnapRef to go stale after rapid A→B→A navigation,
@@ -1080,7 +1173,7 @@ function KeepAliveRoot({
   }, [aliveRef])
 
   return (
-    <div className={className ? `animated-outlet-group ${className}` : 'animated-outlet-group'}>
+    <div className={className ? `animated-outlet-group ${className}` : 'animated-outlet-group'} data-pending={isPending || undefined}>
       {keysRef.current.map((key) => {
         const pageSnap = snapshotsRef.current.get(key)!
         const isActive = key === pageKey
@@ -1246,11 +1339,15 @@ function AnimatedRoot({
   depth,
   mode: modeProp,
   layoutTransition,
+  onTransitionStart,
+  onTransitionEnd,
   className,
 }: {
   depth: number
   mode?: OutletMode
   layoutTransition?: RouteAnimType
+  onTransitionStart?: () => void
+  onTransitionEnd?: () => void
   className?: string
 }) {
   const matches = useMatches()
@@ -1258,6 +1355,7 @@ function AnimatedRoot({
   const navType = useNavigationType()
   const outlet = useOutlet()
   const locCtx = useContext(UNSAFE_LocationContext)
+  const isPending = useNavigation().state !== 'idle'
   const mode = resolveOutletMode(modeProp, matches, location.state)
   const tabs = mode === 'switch'
   const fallback = layoutTransition ?? (tabs ? 'none' : 'cover')
@@ -1313,14 +1411,20 @@ function AnimatedRoot({
   const settledKeyRef = useRef(settledLocation.key)
   settledKeyRef.current = settledLocation.key
 
+  const onTransitionStartRef = useRef(onTransitionStart)
+  onTransitionStartRef.current = onTransitionStart
+  const onTransitionEndRef = useRef(onTransitionEnd)
+  onTransitionEndRef.current = onTransitionEnd
   const commitSettled = useCallback(() => {
     if (settledKeyRef.current !== locationRef.current.key) {
       setSettledLocation(locationRef.current)
+      onTransitionEndRef.current?.()
     }
   }, [])
 
   useLayoutEffect(() => {
     if (settledLocation.key === location.key) return
+    onTransitionStartRef.current?.()
     if (activePlan.duration <= 0) {
       commitSettled()
       return
@@ -1343,6 +1447,7 @@ function AnimatedRoot({
     <TransitionGroup
       className={className ? `animated-outlet-group ${className}` : 'animated-outlet-group'}
       childFactory={childFactory}
+      data-pending={isPending || undefined}
     >
       <PageTransition
         key={stablePageKey}
@@ -1362,6 +1467,8 @@ export default function AnimatedOutlet({
   mode,
   className,
   children,
+  onTransitionStart,
+  onTransitionEnd,
 }: AnimatedOutletProps) {
   const depth = useContext(DepthContext)
   const matches = useMatches()
@@ -1397,6 +1504,8 @@ export default function AnimatedOutlet({
             exclude={keepAliveCtx?.excludeRef.current}
             aliveRef={keepAliveCtx?.aliveRef}
             layoutTransition={transition}
+            onTransitionStart={onTransitionStart}
+            onTransitionEnd={onTransitionEnd}
             className={className}
           />
         </DepthContext.Provider>
@@ -1406,7 +1515,7 @@ export default function AnimatedOutlet({
     return (
       <DepthContext.Provider value={depth + 1}>
         {transition ? <LayoutScopeRegistrar transition={transition} /> : null}
-        <BackgroundPreserveRoot depth={depth} layoutTransition={transition} className={className} />
+        <BackgroundPreserveRoot depth={depth} layoutTransition={transition} max={keepAliveCtx?.maxRef.current} onTransitionStart={onTransitionStart} onTransitionEnd={onTransitionEnd} aliveRef={keepAliveCtx?.aliveRef} className={className} />
       </DepthContext.Provider>
     )
   }
@@ -1414,7 +1523,7 @@ export default function AnimatedOutlet({
   return (
     <DepthContext.Provider value={depth + 1}>
       {transition ? <LayoutScopeRegistrar transition={transition} /> : null}
-      <AnimatedRoot depth={depth} mode={mode} layoutTransition={transition} className={className} />
+      <AnimatedRoot depth={depth} mode={mode} layoutTransition={transition} onTransitionStart={onTransitionStart} onTransitionEnd={onTransitionEnd} className={className} />
     </DepthContext.Provider>
   )
 }

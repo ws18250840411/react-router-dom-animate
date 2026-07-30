@@ -10,12 +10,27 @@
   contain: paint;
 }
 
+/* Loading state: when a route's loader is pending, show a subtle overlay.
+   Users can override with: .animated-outlet-group[data-pending]::after { ... } */
+.animated-outlet-group[data-pending]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background: var(--fr-pending-bg, rgba(255, 255, 255, 0.4));
+}
+
 :root {
   --fr-duration: 300ms;
   --fr-ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --fr-ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
   --fr-ease-tab: cubic-bezier(0.4, 0, 0.2, 1);
   --fr-modal-overlay: rgba(15, 23, 42, 0.55);
+  /* Page background colors (override to match your app's theme) */
+  --fr-page-bg: #f9fafb;
+  --fr-page-bg-dark: #030712;
+  --fr-pending-bg: rgba(255, 255, 255, 0.4);
 }
 
 .animated-outlet-page {

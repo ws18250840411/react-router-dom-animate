@@ -97,12 +97,20 @@ export type KeepAliveFilter =
   | RegExp
   | ((pathname: string, cacheName?: string) => boolean)
 
-/** Route handle fields recognized by AnimatedOutlet and KeepAlive. */
+/**
+ * Route handle fields recognized by AnimatedOutlet and KeepAlive.
+ *
+ * `keepAlive` and `keepBackground` are aliases - both enable page caching.
+ * Use `keepBackground` when you want to emphasize "preserve the background
+ * page during PUSH" (stack semantics), and `keepAlive` for general caching.
+ */
 export interface AnimatedRouteHandle {
   transition?: RouteAnimType
   mode?: OutletMode
   tabIndex?: number
+  /** Enable page caching for this route (alias of keepBackground). */
   keepAlive?: boolean
+  /** Enable page caching for this route (alias of keepAlive). */
   keepBackground?: boolean
   keepAliveName?: string
 }
