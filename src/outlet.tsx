@@ -81,7 +81,11 @@ type LocCtxValue = (typeof UNSAFE_LocationContext) extends Context<infer V> ? V 
  * context during exit animations. If `UNSAFE_LocationContext` is removed in a
  * future React Router version, replace this with a passthrough:
  *
- *   function LocationContextProvider({ children }) { return <>{children}</> }
+ *   // ===========================================================================
+// Contexts & Type Utilities
+// ===========================================================================
+
+function LocationContextProvider({ children }) { return <>{children}</> }
  *
  * The only impact of a passthrough is that exit animations may briefly show the
  * new route's content (visual glitch), not a hard crash.
@@ -273,6 +277,10 @@ function PageTransition({
   )
 }
 
+// ===========================================================================
+// Shared Utilities (pageTransitionKey, snap, PageScope, PageTransition)
+// ===========================================================================
+
 const PageActiveContext = createContext<string | null>(null)
 
 /** Extract the initial-position class (fr-tab-pre-enter-*) from a CSSTransition enter className string. */
@@ -292,6 +300,17 @@ function extractPreEnterClass(enterClass: string | undefined): string {
  * last recorded value is always the position just before the page went hidden. Restored
  * in `useLayoutEffect` after Activity makes the page visible again.
  */
+// ===========================================================================
+// BackgroundPreserveRoot - stack mode (PUSH/POP with background preservation)
+//
+// Render-phase ref mutations: stackRef.current is updated during render based
+// on location.key changes. This is safe because:
+// 1. Mutations are idempotent (guarded by location.key !== lastToKeyRef checks)
+// 2. forceRender is synchronous (useReducer), not wrapped in startTransition
+// 3. These components are never inside Suspense boundaries (they are layouts)
+// 4. React 19 Concurrent Mode only affects Suspense/startTransition/deferredValue
+// ===========================================================================
+
 function BackgroundPreserveRoot({
   depth,
   layoutTransition,
@@ -396,7 +415,7 @@ function BackgroundPreserveRoot({
   }, [])
 
   const stackRef = useRef<StackEntry[]>([])
-  const [, forceRender] = useReducer((n: number) => n + 1, 0)
+  const [renderVersion, forceRender] = useReducer((n: number) => n + 1, 0)
   const pendingEnterRef = useRef(new Set<string>())
 
   // Scroll positions are tracked via capture-phase scroll listeners (keyed by stableKey).
@@ -690,8 +709,11 @@ function BackgroundPreserveRoot({
         detachBgScrollHandler(bgScrollHandlersRef.current, bgFrozenRef.current, bgInteractionFrozenRef.current, bgNavigationFrozenRef.current, key)
       }
     })
-  })
+  }, [renderVersion])
 
+  // No dependency array: must run after every render to check pendingEnterRef.
+  // Adding [renderVersion] would create a deadlock: this effect calls forceRender
+  // to increment renderVersion, but if it doesn't run, renderVersion never changes.
   useLayoutEffect(() => {
     if (pendingEnterRef.current.size > 0) {
       pendingEnterRef.current.clear()
@@ -805,6 +827,10 @@ function BackgroundPreserveRoot({
   )
 }
 
+// ===========================================================================
+// Filter & Scroll Utilities
+// ===========================================================================
+
 function routeCacheName(matches: UIMatch[]): string | undefined {
   for (let index = matches.length - 1; index >= 0; index--) {
     const name = (matches[index]?.handle as { keepAliveName?: unknown } | undefined)?.keepAliveName
@@ -892,6 +918,13 @@ function detachBgScrollHandler(
  * Known limitation: video/audio elements pause when hidden, and iframes may
  * reload — this is a browser-level consequence of display:none.
  */
+// ===========================================================================
+// KeepAliveRoot - switch mode (LRU tab cache with Activity)
+//
+// Same render-phase ref mutation pattern as BackgroundPreserveRoot.
+// See safety notes above.
+// ===========================================================================
+
 function KeepAliveRoot({
   max = 30,
   include,
@@ -927,7 +960,7 @@ function KeepAliveRoot({
   const keysRef = useRef<string[]>([])
   const pageKeyRef = useRef(pageKey)
   pageKeyRef.current = pageKey
-  const [, forceRender] = useReducer((n: number) => n + 1, 0)
+  const [renderVersion, forceRender] = useReducer((n: number) => n + 1, 0)
 
   // Per-page Activity mode (deferred to 'hidden' after exit animation finishes).
   const activityModesRef = useRef(new Map<string, 'visible' | 'hidden'>())
@@ -1080,7 +1113,7 @@ function KeepAliveRoot({
         scrollHandlersRef.current.delete(key)
       }
     })
-  })
+  }, [renderVersion])
 
   // Restore scroll after Activity removes display:none.
   useLayoutEffect(() => {
@@ -1108,6 +1141,8 @@ function KeepAliveRoot({
   // one-frame flash that occurs when CSSTransition removes animation classes from an
   // interrupted page, causing it to snap back to position 0 before Activity hides it.
   // Runs before browser paint (useLayoutEffect) so the flash is never visible.
+  // No dependency array: depends on forceRender from pendingEnter effect above.
+  // Adding [renderVersion] would skip cleanup when pendingEnter didn't fire.
   useLayoutEffect(() => {
     if (activePlan.duration > 0) return
     let changed = false
@@ -1243,6 +1278,10 @@ function KeepAliveRoot({
   )
 }
 
+// ===========================================================================
+// Lifecycle Hooks (useActivated / useDeactivated)
+// ===========================================================================
+
 function usePageActive(): boolean {
   const activeKey = useContext(PageActiveContext)
   const { pathname } = useLocation()
@@ -1319,6 +1358,10 @@ export function useDeactivated(callback: () => void): void {
     }
   }, [isActive, isInKeepAlive])
 }
+
+// ===========================================================================
+// AnimatedRoot - no-cache mode (TransitionGroup + CSSTransition)
+// ===========================================================================
 
 function LayoutScopeRegistrar({ transition }: { transition: RouteAnimType }) {
   const depth = useContext(DepthContext)
@@ -1461,6 +1504,10 @@ function AnimatedRoot({
     </TransitionGroup>
   )
 }
+
+// ===========================================================================
+// AnimatedOutlet - entry point (dispatches to AnimatedRoot / BPR / KeepAliveRoot)
+// ===========================================================================
 
 export default function AnimatedOutlet({
   transition,
