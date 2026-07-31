@@ -5,6 +5,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.3.0] - 2026-07-31
+
+### Added
+
+- **Stack mode depth limit**: `<KeepAlive max={N}>` now applies to both modes. Stack mode defaults to `10` (FIFO eviction from bottom); switch mode defaults to `30` (LRU). Prevents OOM in long-session WebView scenarios with unbounded PUSH navigation.
+- **Transition callbacks**: `onTransitionStart` / `onTransitionEnd` props on `<AnimatedOutlet>`. Fires on every navigation (including instant transitions). Use for NProgress, analytics, interaction locking, etc.
+- **Stack mode `aliveRef`**: `remove(pathname)` / `removeAll()` / `getCached()` now work in both stack and switch modes. `StackEntry` gained a `pathname` field for pathname-based lookup.
+- **Route loading integration**: Container auto-sets `data-pending` attribute when `useNavigation().state !== 'idle'`. CSS renders a subtle overlay (`--fr-pending-bg`) to prevent white-flash during loader pending. Fully customizable via `[data-pending]` selector.
+- **CSS variables in `:root`**: `--fr-page-bg`, `--fr-page-bg-dark`, and `--fr-pending-bg` are now declared in `:root` (previously only inline fallbacks).
+
+### Changed
+
+- **`snap()` zero-copy**: Stores `matches` array reference directly instead of shallow-copying on every navigation. React Router creates a new array per location change, so from/to snapshots never alias.
+- **RegExp filter clone**: `matchFilter` now creates `new RegExp(filter.source, filter.flags.replace('g', ''))` per call instead of double `lastIndex` reset. Eliminates lastIndex race conditions in concurrent invocations.
+- **Type safety**: Replaced all `as never` casts with inferred `LocCtxValue` type (`(typeof UNSAFE_LocationContext) extends Context<infer V> ? V : never`). Zero `as never` remaining in code.
+- **`LocationContextProvider` wrapper**: All 6 `UNSAFE_LocationContext.Provider` usages centralized into one wrapper component. Future RRD breaking change requires modifying only one location.
+- **Effect optimization**: 2 scroll-handler attach/detach effects now use `[renderVersion]` dependency (only runs after `forceRender`) instead of every render. 3 `pendingEnter`/`rapid-nav` effects remain no-deps with documented deadlock-prevention rationale.
+- **`vitest.config.ts` simplified**: Removed redundant `environmentMatchGlobs` (all test files already use `@vitest-environment jsdom` inline pragmas).
+- **Code organization**: Added section comments (Contexts / Utilities / BPR / KAR / Hooks / AnimatedRoot / Entry) and render-phase mutation safety notes.
+
+### Documentation
+
+- **README (CN + EN)**: Added CSS variables reference table (9 variables), route loading state section, transition callbacks example, expanded `aliveRef` docs for both modes, updated `<KeepAlive>` table (`max` and `aliveRef` now dual-mode).
+- **`keepBackground` / `keepAlive`**: Documented as aliases in `AnimatedRouteHandle` JSDoc.
+- **`useDeactivated`**: Added detailed branch-by-branch comments explaining the 3-branch logic and why simplification is not possible.
+
+---
+
+---
+
 ## [1.2.1] — 2026-07-29
 
 ### Added
