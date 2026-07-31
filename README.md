@@ -10,6 +10,14 @@ npm install react-router-dom-animate
 
 ---
 
+## 在线示例
+
+- StackBlitz（GitHub 源码在线运行）：[Open Demo](https://stackblitz.com/github/ws18250840411/react-router-dom-animate?file=demo/src/main.tsx)
+- GitHub 仓库源码：[ws18250840411/react-router-dom-animate](https://github.com/ws18250840411/react-router-dom-animate)
+- 如果提示 `Repository not found`，请先将当前代码推送到上述 GitHub 仓库并设为 Public。
+
+---
+
 ## 快速上手
 
 把根 Layout 的 `<Outlet />` 换成 `<AnimatedOutlet />`，默认即有 iOS 风格 `cover` 转场：

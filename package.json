@@ -30,11 +30,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://gitee.com/ws18250840411/react-router-dom-animate.git"
+    "url": "git+https://github.com/ws18250840411/react-router-dom-animate.git"
   },
-  "homepage": "https://gitee.com/ws18250840411/react-router-dom-animate",
+  "homepage": "https://github.com/ws18250840411/react-router-dom-animate",
   "bugs": {
-    "url": "https://gitee.com/ws18250840411/react-router-dom-animate/issues"
+    "url": "https://github.com/ws18250840411/react-router-dom-animate/issues"
   },
   "publishConfig": {
     "access": "public"
