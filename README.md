@@ -12,7 +12,7 @@ npm install react-router-dom-animate
 
 ## 在线示例
 
-- StackBlitz（仅加载 `stackblitz` 示例目录）：[Open Demo](https://stackblitz.com/github/ws18250840411/react-router-dom-animate/tree/master/stackblitz)
+- StackBlitz（仅加载 `demo-stackblitz` 示例目录）：[Open Demo](https://stackblitz.com/github/ws18250840411/react-router-dom-animate/tree/master/demo-stackblitz)
 - 示例使用 npm 包 `react-router-dom-animate`，不会引用仓库内 `src` 源码。
 
 ---
