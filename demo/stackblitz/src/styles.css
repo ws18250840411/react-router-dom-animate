@@ -180,3 +180,57 @@ button {
 .tab-card h3 {
   margin: 0 0 8px;
 }
+
+/* onTransitionStart/End 状态徽章 */
+.chip-active {
+  background: #fef3c7;
+  color: #92400e;
+  animation: pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
+  from { opacity: 1; }
+  to   { opacity: 0.5; }
+}
+
+/* aliveRef 控制区 */
+.alive-controls {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed #d1d5db;
+}
+
+.cache-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.cache-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 2px 8px;
+  color: #1e40af;
+  font-size: 12px;
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.remove-btn:hover {
+  color: #ef4444;
+}
