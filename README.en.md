@@ -209,4 +209,34 @@ When a React Router 7 loader is pending, the container gets a `data-pending` att
 npm run demo   # http://localhost:5180
 ```
 
+---
+
+## Source Structure (contributor reference)
+
+```
+src/
+├── index.ts          # Public API entry (exports + CSS injection + warmDurationMs)
+├── types.ts          # All TypeScript type definitions
+├── transition.ts     # Animation preset registry, planTransition, CSS duration reading
+├── anim.css          # Built-in animation styles + CSS variables
+├── context.tsx       # React Context definitions (LocCtxValue, DepthContext, KeepAliveContext, …)
+├── common.tsx        # Shared utilities (PageScope, FrozenOutlet, PageTransition, snap, …)
+├── hooks.ts          # Lifecycle hooks (useActivated, useDeactivated)
+├── stack-root.tsx    # BackgroundPreserveRoot (stack mode PUSH/POP + iOS scroll restore)
+├── switch-root.tsx   # KeepAliveRoot (switch mode LRU cache + include/exclude filter)
+├── animated-root.tsx # AnimatedRoot + LayoutScopeRegistrar (no-cache TransitionGroup mode)
+└── outlet.tsx        # Entry layer: KeepAlive / AnimatedOutlet components
+```
+
+AnimatedOutlet internal dispatch:
+
+```
+AnimatedOutlet
+├── children + transition ──→ PageScope (register page-level animation override)
+├── keepAlive=true
+│   ├── mode=switch ────────→ KeepAliveRoot (LRU tab cache, Activity show/hide)
+│   └── mode=stack  ────────→ BackgroundPreserveRoot (back stack, PUSH/POP)
+└── default ────────────────→ AnimatedRoot (TransitionGroup, no cache)
+```
+
 See [CHANGELOG.md](./CHANGELOG.md) for full release notes. MIT

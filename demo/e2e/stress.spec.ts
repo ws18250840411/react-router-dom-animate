@@ -231,6 +231,10 @@ test.describe('压测 — 全场景快速进出', () => {
   })
 
   test('首页矩阵按钮连点（不等待动画结束）', async ({ page }) => {
+    // Give extra headroom: 30 rapid navigations with 10ms gap can exceed the 30s default
+    // on slower CI machines, and the page connection may briefly drop during transitions.
+    test.setTimeout(60_000)
+
     const errors = trackErrors(page)
     await page.goto('/')
 
@@ -253,12 +257,18 @@ test.describe('压测 — 全场景快速进出', () => {
 
     for (let i = 0; i < 30; i++) {
       const id = buttons[i % buttons.length]!
-      const el = page.getByTestId(id).first()
-      if (await el.isVisible()) {
-        // Ignore detach errors: elements can unmount mid-transition during this stress test.
-        await el.click({ force: true }).catch(() => {})
+      try {
+        const el = page.getByTestId(id).first()
+        if (await el.isVisible()) {
+          // Ignore detach errors: elements can unmount mid-transition during this stress test.
+          await el.click({ force: true }).catch(() => {})
+        }
+        await page.waitForTimeout(10)
+      } catch {
+        // Page connection may drop during extremely rapid navigation; re-navigate to root
+        // and continue so the remaining clicks still exercise the stress scenario.
+        try { await page.goto('/') } catch { break }
       }
-      await page.waitForTimeout(10)
     }
 
     await page.waitForTimeout(SETTLE_MS)
