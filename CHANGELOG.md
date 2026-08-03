@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [1.3.0] - 2026-07-31
+## [1.2.2] — 2026-08-03
 
 ### Added
 
@@ -14,32 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Stack mode `aliveRef`**: `remove(pathname)` / `removeAll()` / `getCached()` now work in both stack and switch modes. `StackEntry` gained a `pathname` field for pathname-based lookup.
 - **Route loading integration**: Container auto-sets `data-pending` attribute when `useNavigation().state !== 'idle'`. CSS renders a subtle overlay (`--fr-pending-bg`) to prevent white-flash during loader pending. Fully customizable via `[data-pending]` selector.
 - **CSS variables in `:root`**: `--fr-page-bg`, `--fr-page-bg-dark`, and `--fr-pending-bg` are now declared in `:root` (previously only inline fallbacks).
-
-### Changed
-
-- **`snap()` zero-copy**: Stores `matches` array reference directly instead of shallow-copying on every navigation. React Router creates a new array per location change, so from/to snapshots never alias.
-- **RegExp filter clone**: `matchFilter` now creates `new RegExp(filter.source, filter.flags.replace('g', ''))` per call instead of double `lastIndex` reset. Eliminates lastIndex race conditions in concurrent invocations.
-- **Type safety**: Replaced all `as never` casts with inferred `LocCtxValue` type (`(typeof UNSAFE_LocationContext) extends Context<infer V> ? V : never`). Zero `as never` remaining in code.
-- **`LocationContextProvider` wrapper**: All 6 `UNSAFE_LocationContext.Provider` usages centralized into one wrapper component. Future RRD breaking change requires modifying only one location.
-- **Effect optimization**: 2 scroll-handler attach/detach effects now use `[renderVersion]` dependency (only runs after `forceRender`) instead of every render. 3 `pendingEnter`/`rapid-nav` effects remain no-deps with documented deadlock-prevention rationale.
-- **`vitest.config.ts` simplified**: Removed redundant `environmentMatchGlobs` (all test files already use `@vitest-environment jsdom` inline pragmas).
-- **Code organization**: Added section comments (Contexts / Utilities / BPR / KAR / Hooks / AnimatedRoot / Entry) and render-phase mutation safety notes.
-
-### Documentation
-
-- **README (CN + EN)**: Added CSS variables reference table (9 variables), route loading state section, transition callbacks example, expanded `aliveRef` docs for both modes, updated `<KeepAlive>` table (`max` and `aliveRef` now dual-mode).
-- **`keepBackground` / `keepAlive`**: Documented as aliases in `AnimatedRouteHandle` JSDoc.
-- **`useDeactivated`**: Added detailed branch-by-branch comments explaining the 3-branch logic and why simplification is not possible.
-
----
-
----
-
-## [1.2.2] — 2026-08-03
-
-### Added
-
-- **StackBlitz 在线示例**：在 `demo/stackblitz/` 新增独立 Vite 项目，直接依赖 npm 包，不暴露仓库源码。示例覆盖全部核心功能：全局转场切换（6 种类型）、列表→详情 stack 导航、KeepAlive Tabs 状态保留（计数器 / 输入框）、`useActivated` / `useDeactivated` 生命周期日志。
+- **StackBlitz 在线示例**：在 `demo/stackblitz/` 新增独立 Vite 项目，直接依赖 npm 包，不暴露仓库源码。示例覆盖全部核心功能：全局转场切换（6 种类型）、列表→详情 stack 导航、KeepAlive Tabs 状态保留（计数器 / 输入框）、`useActivated` / `useDeactivated` 生命周期日志、`onTransitionStart/End` 回调、`aliveRef` 命令式缓存控制。
 
 ### Changed
 
@@ -51,10 +26,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `switch-root.tsx` — `KeepAliveRoot`（switch 模式 LRU tab 缓存 + `include` / `exclude` 过滤）
   - `animated-root.tsx` — `AnimatedRoot` + `LayoutScopeRegistrar`（无缓存 TransitionGroup 模式）
   - `outlet.tsx`（精简）— 入口层：`KeepAlive` / `AnimatedOutlet` 组件及 Props 类型
+- **`snap()` zero-copy**: Stores `matches` array reference directly instead of shallow-copying on every navigation. React Router creates a new array per location change, so from/to snapshots never alias.
+- **RegExp filter clone**: `matchFilter` now creates `new RegExp(filter.source, filter.flags.replace('g', ''))` per call instead of double `lastIndex` reset. Eliminates lastIndex race conditions in concurrent invocations.
+- **Type safety**: Replaced all `as never` casts with inferred `LocCtxValue` type (`(typeof UNSAFE_LocationContext) extends Context<infer V> ? V : never`). Zero `as never` remaining in code.
+- **`LocationContextProvider` wrapper**: All 6 `UNSAFE_LocationContext.Provider` usages centralized into one wrapper component. Future RRD breaking change requires modifying only one location.
+- **Effect optimization**: 2 scroll-handler attach/detach effects now use `[renderVersion]` dependency (only runs after `forceRender`) instead of every render. 3 `pendingEnter`/`rapid-nav` effects remain no-deps with documented deadlock-prevention rationale.
+- **`vitest.config.ts` simplified**: Removed redundant `environmentMatchGlobs` (all test files already use `@vitest-environment jsdom` inline pragmas).
+- **Code organization**: Added section comments (Contexts / Utilities / BPR / KAR / Hooks / AnimatedRoot / Entry) and render-phase mutation safety notes.
 - **JSDoc 格式修复**：移除原 `outlet.tsx` 中误嵌入 JSDoc 注释块内的 section header 注释。
 - **useMemo 依赖精简**：`AnimatedRoot.activePlan` useMemo 移除未参与计算的 `depth` 依赖项。
 - **`groupClassName` 工具函数**：三处重复的 className 拼接逻辑统一提取为 `groupClassName(extra?: string)` 辅助函数。
 - **仓库同步至 GitHub**：`repository` / `homepage` / `bugs.url` 切换为 GitHub 地址，并配置双远端（GitHub + Gitee）同步推送。
+
+### Documentation
+
+- **README (CN + EN)**: Added CSS variables reference table (9 variables), route loading state section, transition callbacks example, expanded `aliveRef` docs for both modes, updated `<KeepAlive>` table (`max` and `aliveRef` now dual-mode), added source structure section for contributors.
+- **`keepBackground` / `keepAlive`**: Documented as aliases in `AnimatedRouteHandle` JSDoc.
+- **`useDeactivated`**: Added detailed branch-by-branch comments explaining the 3-branch logic and why simplification is not possible.
 
 ---
 
