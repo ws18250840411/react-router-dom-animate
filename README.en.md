@@ -10,6 +10,14 @@ npm install react-router-dom-animate
 
 ---
 
+## Live Demo
+
+- StackBlitz (loads only `demo/stackblitz`): [Open Demo](https://stackblitz.com/github/ws18250840411/react-router-dom-animate/tree/master/demo/stackblitz)
+- The demo uses the published npm package and does not expose the repository source.
+- Try it live: global transition switch (6 types), list→detail stack navigation, KeepAlive Tabs with state preservation, `useActivated` / `useDeactivated` lifecycle logs.
+
+---
+
 ## Quick Start
 
 Replace `<Outlet />` with `<AnimatedOutlet />` in your root layout for an iOS-style `cover` transition out of the box:
