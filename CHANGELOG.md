@@ -35,6 +35,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.2.2] — 2026-08-03
+
+### Added
+
+- **StackBlitz 在线示例**：在 `demo/stackblitz/` 新增独立 Vite 项目，直接依赖 npm 包，不暴露仓库源码。示例覆盖全部核心功能：全局转场切换（6 种类型）、列表→详情 stack 导航、KeepAlive Tabs 状态保留（计数器 / 输入框）、`useActivated` / `useDeactivated` 生命周期日志。
+
+### Changed
+
+- **源码模块化重构**：将 `src/outlet.tsx`（1576 行）拆分为 7 个独立模块，提升可维护性与可读性：
+  - `context.tsx` — 所有 Context 定义（`LocCtxValue` / `LocationContextProvider` / `DepthContext` / `FrozenContext` / `KeepAliveContext` / `PageActiveContext`）
+  - `common.tsx` — 共享工具（`snap` / `pageTransitionKey` / `PageScope` / `FrozenOutlet` / `PageTransition` / `groupClassName` / `extractPreEnterClass`）
+  - `hooks.ts` — 生命周期钩子（`useActivated` / `useDeactivated` / `usePageActive`）
+  - `stack-root.tsx` — `BackgroundPreserveRoot`（stack 模式 PUSH/POP + iOS 滚动恢复）
+  - `switch-root.tsx` — `KeepAliveRoot`（switch 模式 LRU tab 缓存 + `include` / `exclude` 过滤）
+  - `animated-root.tsx` — `AnimatedRoot` + `LayoutScopeRegistrar`（无缓存 TransitionGroup 模式）
+  - `outlet.tsx`（精简）— 入口层：`KeepAlive` / `AnimatedOutlet` 组件及 Props 类型
+- **JSDoc 格式修复**：移除原 `outlet.tsx` 中误嵌入 JSDoc 注释块内的 section header 注释。
+- **useMemo 依赖精简**：`AnimatedRoot.activePlan` useMemo 移除未参与计算的 `depth` 依赖项。
+- **`groupClassName` 工具函数**：三处重复的 className 拼接逻辑统一提取为 `groupClassName(extra?: string)` 辅助函数。
+- **仓库同步至 GitHub**：`repository` / `homepage` / `bugs.url` 切换为 GitHub 地址，并配置双远端（GitHub + Gitee）同步推送。
+
+---
+
 ## [1.2.1] — 2026-07-29
 
 ### Added

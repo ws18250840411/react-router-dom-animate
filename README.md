@@ -223,4 +223,34 @@ unregisterAnimPreset('my-flip')  // HMR 场景移除
 npm run demo   # http://localhost:5180
 ```
 
+---
+
+## 源码结构（贡献者参考）
+
+```
+src/
+├── index.ts          # 公开 API 入口（导出 + 注入 CSS + warmDurationMs）
+├── types.ts          # 所有 TypeScript 类型定义
+├── transition.ts     # 动画预设注册、planTransition、CSS 时长读取
+├── anim.css          # 内置动画样式 + CSS 变量
+├── context.tsx       # React Context 定义（LocCtxValue、DepthContext、KeepAliveContext 等）
+├── common.tsx        # 共享工具组件（PageScope、FrozenOutlet、PageTransition、snap 等）
+├── hooks.ts          # 生命周期钩子（useActivated、useDeactivated）
+├── stack-root.tsx    # BackgroundPreserveRoot（stack 模式 + iOS 滚动恢复）
+├── switch-root.tsx   # KeepAliveRoot（switch 模式 LRU 缓存）
+├── animated-root.tsx # AnimatedRoot + LayoutScopeRegistrar（无缓存模式）
+└── outlet.tsx        # 入口层：KeepAlive / AnimatedOutlet 组件
+```
+
+AnimatedOutlet 内部分发逻辑：
+
+```
+AnimatedOutlet
+├── children + transition ──→ PageScope（注册页面级动画覆盖）
+├── keepAlive=true
+│   ├── mode=switch ────────→ KeepAliveRoot（LRU tab 缓存，Activity show/hide）
+│   └── mode=stack  ────────→ BackgroundPreserveRoot（返回栈，PUSH/POP）
+└── 默认 ───────────────────→ AnimatedRoot（TransitionGroup，无缓存）
+```
+
 完整变更记录见 [CHANGELOG.md](./CHANGELOG.md)。MIT
